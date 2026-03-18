@@ -22,7 +22,7 @@ router.use("/attendance", attendanceRoutes);
 router.use("/students", studentRoutes);
 router.use("/payment", paymentRoutes);
 router.use("/fees", feesRoutes);
-router.use("/complaint", complaintRoutes);
+router.use("/complaints", complaintRoutes);
 router.use("/enquiry", enquiryRoutes);
 router.use("/subscription", subscriptionRoutes);
 router.use("/super-admin", superAdminRoutes);
