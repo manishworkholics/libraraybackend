@@ -7,29 +7,31 @@ import {
   getStudentById,
   updateStudent,
   deleteStudent,
-  getStudentProfile
+  getStudentProfile,
+  getAvailableSeats,
+  bookSeat,
+  checkoutSeat
 } from "./student.controller.js";
 import { studentLogin } from "./studentAuth.controller.js"
 
 const router = express.Router();
 
-/* Create Student */
-router.post("/", adminAuth, createStudent);
+// 🔥 FIRST — student auth routes
+router.get("/profile", studentAuth, getStudentProfile);
+router.get("/seats", studentAuth, getAvailableSeats);
+router.post("/book-seat", studentAuth, bookSeat);
+router.post("/checkout-seat", studentAuth, checkoutSeat);
 
-/* Get All Students */
+// 🔥 THEN login
+router.post("/login", studentLogin);
+
+// 🔥 ADMIN ROUTES
+router.post("/", adminAuth, createStudent);
 router.get("/", adminAuth, getAllStudents);
 
-/* Get Single Student */
+// ❗ LAST — dynamic route
 router.get("/:id", adminAuth, getStudentById);
-
-/* Update Student */
 router.put("/:id", adminAuth, updateStudent);
-
-/* Delete Student */
 router.delete("/:id", adminAuth, deleteStudent);
-
-router.get("/profile", studentAuth, getStudentProfile);
-
-router.post("/login", studentLogin);
 
 export default router;

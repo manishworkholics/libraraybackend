@@ -1,5 +1,7 @@
 import Student from "./student.model.js";
 import Counter from "../commonmodel/Counter.js";
+import Seat from "../seat/seat.model.js";
+import SeatBooking from "../commonmodel/seatBooking.model.js";
 import bcrypt from "bcryptjs";
 
 /* Create Student */
@@ -253,5 +255,121 @@ export const getStudentProfile = async (req, res) => {
       success: false,
       message: error.message,
     });
+  }
+};
+
+
+// 1️⃣ Get Seats
+export const getAvailableSeats = async (req, res) => {
+  try {
+
+    const seats = await Seat.find({
+      libraryId: req.user.libraryId
+    });
+
+    res.json({
+      success: true,
+      data: seats
+    });
+
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+
+// 2️⃣ Book Seat
+export const bookSeat = async (req, res) => {
+  try {
+
+    const { seatId, shift } = req.body;
+
+    // check if seat already booked
+    const existingSeatBooking = await SeatBooking.findOne({
+      seatId,
+      shift,
+      status: "active"
+    });
+
+    if (existingSeatBooking) {
+      return res.status(400).json({
+        success:false,
+        message: "Seat already booked for this shift"
+      });
+    }
+
+    // check if student already has seat
+    const studentBooking = await SeatBooking.findOne({
+      studentId: req.user.userId,
+      status: "active"
+    });
+
+    if (studentBooking) {
+      return res.status(400).json({
+        success:false,
+        message: "You already have a booked seat"
+      });
+    }
+
+    const booking = await SeatBooking.create({
+      studentId: req.user.userId,
+      libraryId: req.user.libraryId,
+      seatId,
+      shift,
+      checkIn: new Date(),
+      status: "active"
+    });
+
+    res.json({
+      success: true,
+      message: "Seat booked successfully",
+      data: booking
+    });
+
+  } catch (error) {
+
+    if (error.code === 11000) {
+      return res.status(400).json({
+        message: "Seat already booked"
+      });
+    }
+
+    res.status(500).json({
+      message: error.message
+    });
+  }
+};
+
+// 3️⃣ Checkout Seat
+export const checkoutSeat = async (req, res) => {
+  try {
+
+    const booking = await SeatBooking.findOne({
+      studentId: req.user.userId,
+      status: "active"
+    });
+
+    if (!booking) {
+      return res.status(400).json({
+        message: "No active seat booking"
+      });
+    }
+
+    booking.status = "completed";
+    booking.checkOut = new Date();
+    await booking.save();
+
+    await Seat.findByIdAndUpdate(
+      booking.seatId,
+      { status: "vacant" }
+    );
+
+    res.json({
+      success: true,
+      message: "Seat checkout successful"
+    });
+
+  } catch (error) {
+    res.status(500).json({ message: error.message });
   }
 };
