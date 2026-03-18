@@ -3,7 +3,6 @@ import Seat from "./seat.model.js";
 
 
 
-
 export const createSeat = async (req, res) => {
   try {
     const { seatNumber, floor } = req.body;

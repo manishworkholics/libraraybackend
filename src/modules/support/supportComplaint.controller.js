@@ -41,7 +41,6 @@ export const createComplaint = async (req, res) => {
   }
 };
 
-
 // Get complaints of library
 export const getLibraryComplaints = async (req, res) => {
   try {
