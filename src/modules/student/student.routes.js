@@ -7,7 +7,8 @@ import {
   getStudentById,
   updateStudent,
   deleteStudent,
-  getStudentProfile
+  getStudentProfile,
+  updateStudentStatus
 } from "./student.controller.js";
 import { studentLogin } from "./studentAuth.controller.js"
 
@@ -31,5 +32,10 @@ router.delete("/:id", adminAuth, deleteStudent);
 router.get("/profile", studentAuth, getStudentProfile);
 
 router.post("/login", studentLogin);
+router.put(
+  "/:id/status",
+  adminAuth,
+  updateStudentStatus
+);
 
 export default router;
