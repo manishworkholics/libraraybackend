@@ -8,6 +8,8 @@ import PlatformSubscription from "../commonmodel/platformSubscription.model.js";
 import Expense from "../commonmodel/expense.model.js";
 import SuperAdmin from "../superadmin/superAdmin.model.js";
 import SupportComplaint from "../support/supportComplaint.model.js";
+import SuccessStory from "../commonmodel/SuccessStory.model.js";
+import Gallery from "../commonmodel/Gallery.model.js";
 import jwt from "jsonwebtoken";
 
 /* ================= SUPER ADMIN LOGIN ================= */
@@ -787,4 +789,69 @@ export const resolveComplaint = async (req, res) => {
       message: error.message
     });
   }
+};
+
+
+
+
+// CREATE
+export const createSuccessStory = async (req, res) => {
+  try {
+    const story = await SuccessStory.create(req.body);
+    res.json({ message: "Story created", story });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+// GET ALL
+export const getSuccessStories = async (req, res) => {
+  const stories = await SuccessStory.find().sort({ createdAt: -1 });
+  res.json(stories);
+};
+
+// UPDATE
+export const updateSuccessStory = async (req, res) => {
+  const story = await SuccessStory.findByIdAndUpdate(
+    req.params.id,
+    req.body,
+    { new: true }
+  );
+  res.json({ message: "Updated", story });
+};
+
+// DELETE
+export const deleteSuccessStory = async (req, res) => {
+  await SuccessStory.findByIdAndDelete(req.params.id);
+  res.json({ message: "Deleted" });
+};
+
+
+
+// CREATE
+export const createGallery = async (req, res) => {
+  const item = await Gallery.create(req.body);
+  res.json({ message: "Created", item });
+};
+
+// GET
+export const getGallery = async (req, res) => {
+  const data = await Gallery.find().sort({ createdAt: -1 });
+  res.json(data);
+};
+
+// UPDATE
+export const updateGallery = async (req, res) => {
+  const item = await Gallery.findByIdAndUpdate(
+    req.params.id,
+    req.body,
+    { new: true }
+  );
+  res.json(item);
+};
+
+// DELETE
+export const deleteGallery = async (req, res) => {
+  await Gallery.findByIdAndDelete(req.params.id);
+  res.json({ message: "Deleted" });
 };
