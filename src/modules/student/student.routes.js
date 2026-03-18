@@ -8,34 +8,36 @@ import {
   updateStudent,
   deleteStudent,
   getStudentProfile,
-  updateStudentStatus
+  updateStudentStatus,
+  getAvailableSeats,
+  bookSeat,
+  checkoutSeat
 } from "./student.controller.js";
 import { studentLogin } from "./studentAuth.controller.js"
 
 const router = express.Router();
 
-/* Create Student */
-router.post("/", adminAuth, createStudent);
-
-/* Get All Students */
-router.get("/", adminAuth, getAllStudents);
-
-/* Get Single Student */
-router.get("/:id", adminAuth, getStudentById);
-
-/* Update Student */
-router.put("/:id", adminAuth, updateStudent);
-
-/* Delete Student */
-router.delete("/:id", adminAuth, deleteStudent);
-
+// 🔥 FIRST — student auth routes
 router.get("/profile", studentAuth, getStudentProfile);
+router.get("/seats", studentAuth, getAvailableSeats);
+router.post("/book-seat", studentAuth, bookSeat);
+router.post("/checkout-seat", studentAuth, checkoutSeat);
 
+// 🔥 THEN login
 router.post("/login", studentLogin);
 router.put(
   "/:id/status",
   adminAuth,
   updateStudentStatus
 );
+
+// 🔥 ADMIN ROUTES
+router.post("/", adminAuth, createStudent);
+router.get("/", adminAuth, getAllStudents);
+
+// ❗ LAST — dynamic route
+router.get("/:id", adminAuth, getStudentById);
+router.put("/:id", adminAuth, updateStudent);
+router.delete("/:id", adminAuth, deleteStudent);
 
 export default router;
