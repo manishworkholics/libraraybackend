@@ -12,15 +12,27 @@ const feesSchema = new mongoose.Schema(
       type: Number,
       required: true
     },
-
+    planType: {
+      type: String,
+      enum: [
+        "monthly",
+        "threeMonths",
+        "sixMonths",
+        "yearly",
+        "custom"
+      ],
+      required: true
+    },
     paymentDate: {
       type: String, // YYYY-MM-DD
       default: () => new Date().toISOString().split("T")[0]
     },
 
-    month: String, // example: "Jan-2026"
-
-    note: String
+    paymentMode: {
+      type: String,
+      enum: ["cash", "upi", "card", "bankTransfer"],
+      default: "cash"
+    },
   },
   { timestamps: true }
 );

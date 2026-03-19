@@ -8,7 +8,6 @@ import {
   updateStudent,
   deleteStudent,
   getStudentProfile,
-  updateStudentStatus,
   getAvailableSeats,
   bookSeat,
   checkoutSeat
@@ -25,11 +24,7 @@ router.post("/checkout-seat", studentAuth, checkoutSeat);
 
 // 🔥 THEN login
 router.post("/login", studentLogin);
-router.put(
-  "/:id/status",
-  adminAuth,
-  updateStudentStatus
-);
+
 
 // 🔥 ADMIN ROUTES
 router.post("/", adminAuth, createStudent);

@@ -26,7 +26,9 @@ export const getStudentFees = async (req, res) => {
   try {
     const { studentId } = req.params;
 
-    const history = await Fees.find({ studentId }).sort({ paymentDate: -1 });
+    const history = await Fees.find({ studentId })
+      .populate("studentId", "name phone") // 🔥 important
+      .sort({ paymentDate: -1 });
 
     res.json(history);
   } catch (error) {
@@ -46,8 +48,12 @@ export const createFees = async (req, res) => {
 
 export const getFees = async (req, res) => {
   try {
-    const fees = await Fees.find();
+    const fees = await Fees.find()
+      .populate("studentId", "name phone") // 🔥 YE ADD KARO
+      .sort({ createdAt: -1 });
+
     res.json(fees);
+
   } catch (error) {
     res.status(500).json({ message: error.message });
   }

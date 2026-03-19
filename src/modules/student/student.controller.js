@@ -371,37 +371,3 @@ export const checkoutSeat = async (req, res) => {
     res.status(500).json({ message: error.message });
   }
 };
-
-export const updateStudentStatus = async (req, res) => {
-  try {
-    const { status } = req.body;
-
-    if (!["active", "inactive"].includes(status)) {
-      return res.status(400).json({ message: "Invalid status" });
-    }
-
-    const student = await Student.findOneAndUpdate(
-      {
-        _id: req.params.id,
-        libraryId: req.user.libraryId
-      },
-      {
-        status,
-        lastStatusUpdatedAt: new Date()
-      },
-      { new: true }
-    );
-
-    if (!student) {
-      return res.status(404).json({ message: "Student not found" });
-    }
-
-    res.json({
-      message: "Status updated successfully",
-      student
-    });
-
-  } catch (error) {
-    res.status(500).json({ message: error.message });
-  }
-};
