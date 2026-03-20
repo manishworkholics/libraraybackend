@@ -46,6 +46,19 @@ const enquirySchema = new mongoose.Schema(
       type: String,
       trim: true
     },
+    
+    /* NEW FIELD - DEMO DATE */
+    demoDate: {
+      type: Date,
+      default: null
+    },
+
+    /* NEW FIELD - REMARK */
+    remark: {
+      type: String,
+      trim: true,
+      default: ""
+    },
 
     libraryId: {
       type: mongoose.Schema.Types.ObjectId,

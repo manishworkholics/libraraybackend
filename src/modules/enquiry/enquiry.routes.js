@@ -1,11 +1,13 @@
 import express from "express";
 import {
-  createEnquiry,
-  createWebsiteEnquiry,
-  getAllEnquiries,
-  getSingleEnquiry,
-  updateEnquiry,
-  deleteEnquiry
+   createEnquiry,
+   createWebsiteEnquiry,
+   getAllEnquiries,
+   getSingleEnquiry,
+   updateEnquiry,
+   deleteEnquiry,
+   setDemoDate,
+   addRemark
 } from "./enquiry.controller.js";
 
 import adminAuth from "../../middlewares/adminAuth.middleware.js";
@@ -18,6 +20,18 @@ const router = express.Router();
 
 router.post("/public", createWebsiteEnquiry);
 
+/* =========================================
+   📅 DEMO DATE
+========================================= */
+
+router.put("/demo/:id", adminAuth, setDemoDate);
+
+
+/* =========================================
+   📝 REMARK
+========================================= */
+
+router.put("/remark/:id", adminAuth, addRemark);
 
 /* =========================================
    🧑‍💼 ADMIN PANEL ENQUIRIES

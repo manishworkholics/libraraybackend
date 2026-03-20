@@ -13,7 +13,7 @@ import superAdminRoutes from "../modules/superadmin/superAdmin.routes.js";
 import supportRoutes from "../modules/support/supportComplaint.routes.js";
 import uploadRoutes from "../modules/upload/upload.routes.js";
 import dashboardRoutes from "../modules/dashboard/dashboard.routes.js";
-
+import renewalRoutes from "../modules/renewal/renewal.routes.js";
 const router = express.Router();
 
 router.use("/seats", seatRoutes);
@@ -29,5 +29,6 @@ router.use("/super-admin", superAdminRoutes);
 router.use("/support", supportRoutes);
 router.use("/upload", uploadRoutes);
 router.use("/dashboard", dashboardRoutes);
+router.use("/renewal", renewalRoutes);
 
 export default router;

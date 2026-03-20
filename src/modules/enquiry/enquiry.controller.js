@@ -33,8 +33,6 @@ export const createEnquiry = async (req, res) => {
   }
 };
 
-
-
 /* =========================================
    📋 GET ALL ENQUIRIES (Pagination + Search)
 ========================================= */
@@ -70,8 +68,6 @@ export const getAllEnquiries = async (req, res) => {
   }
 };
 
-
-
 /* =========================================
    🔍 GET SINGLE ENQUIRY
 ========================================= */
@@ -97,8 +93,6 @@ export const getSingleEnquiry = async (req, res) => {
     res.status(500).json({ message: error.message });
   }
 };
-
-
 
 /* =========================================
    ✏️ UPDATE ENQUIRY
@@ -129,8 +123,6 @@ export const updateEnquiry = async (req, res) => {
     res.status(500).json({ message: error.message });
   }
 };
-
-
 
 /* =========================================
    ❌ DELETE ENQUIRY
@@ -186,6 +178,69 @@ export const createWebsiteEnquiry = async (req, res) => {
 
     res.status(201).json({
       message: "Enquiry submitted successfully",
+      enquiry
+    });
+
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+/* =========================================
+   📅 SET DEMO DATE
+========================================= */
+export const setDemoDate = async (req, res) => {
+  try {
+
+    const { id } = req.params;
+    const { libraryId } = req.user;
+
+    const enquiry = await Enquiry.findOneAndUpdate(
+      { _id: id, libraryId },
+      { demoDate: new Date() },
+      { new: true }
+    );
+
+    if (!enquiry) {
+      return res.status(404).json({
+        message: "Enquiry not found"
+      });
+    }
+
+    res.json({
+      message: "Demo date saved",
+      enquiry
+    });
+
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+/* =========================================
+   📝 ADD REMARK
+========================================= */
+export const addRemark = async (req, res) => {
+  try {
+
+    const { id } = req.params;
+    const { libraryId } = req.user;
+    const { remark } = req.body;
+
+    const enquiry = await Enquiry.findOneAndUpdate(
+      { _id: id, libraryId },
+      { remark },
+      { new: true }
+    );
+
+    if (!enquiry) {
+      return res.status(404).json({
+        message: "Enquiry not found"
+      });
+    }
+
+    res.json({
+      message: "Remark added",
       enquiry
     });
 
