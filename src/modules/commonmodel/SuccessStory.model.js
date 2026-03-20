@@ -2,10 +2,10 @@ import mongoose from "mongoose";
 
 const successStorySchema = new mongoose.Schema(
   {
-    title: String,
-    description: String,
+    name: String,
+    exam: String,
+    message: String,
     image: String,
-    coupleName: String,
     isActive: {
       type: Boolean,
       default: true

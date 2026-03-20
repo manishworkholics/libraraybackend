@@ -791,9 +791,6 @@ export const resolveComplaint = async (req, res) => {
   }
 };
 
-
-
-
 // CREATE
 export const createSuccessStory = async (req, res) => {
   try {
@@ -826,12 +823,17 @@ export const deleteSuccessStory = async (req, res) => {
   res.json({ message: "Deleted" });
 };
 
-
-
 // CREATE
 export const createGallery = async (req, res) => {
-  const item = await Gallery.create(req.body);
-  res.json({ message: "Created", item });
+  try {
+    console.log("BODY:", req.body); // 👈 MOST IMPORTANT
+
+    const item = await Gallery.create(req.body);
+
+    res.json({ message: "Created", item });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
 };
 
 // GET
