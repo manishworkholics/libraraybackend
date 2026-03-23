@@ -30,7 +30,7 @@ const feesSchema = new mongoose.Schema(
 
     paymentMode: {
       type: String,
-      enum: ["cash", "upi", "card", "bankTransfer"],
+      enum: ["cash", "upi",],
       default: "cash"
     },
   },
