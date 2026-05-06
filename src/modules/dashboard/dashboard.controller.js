@@ -43,6 +43,9 @@ export const getAdminDashboard = async (req, res) => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
+    const tomorrow = new Date(today);
+    tomorrow.setDate(today.getDate() + 1);
+
     // 1️⃣ Total Students
     const totalStudents = await Student.countDocuments({
       libraryId,
@@ -54,7 +57,7 @@ export const getAdminDashboard = async (req, res) => {
       libraryId
     });
 
-    // 3️⃣ Occupied Seats (active booking)
+    // 3️⃣ Occupied Seats
     const occupiedSeats = await SeatBooking.distinct("seatId", {
       libraryId,
       status: "active"
@@ -76,15 +79,16 @@ export const getAdminDashboard = async (req, res) => {
       {
         $match: {
           libraryId,
-          createdAt: {
-            $gte: today
+          paymentDate: {
+            $gte: today,
+            $lt: tomorrow
           }
         }
       },
       {
         $group: {
           _id: null,
-          total: { $sum: "$amount" }
+          total: { $sum: "$amountPaid" }
         }
       }
     ]);
@@ -92,8 +96,8 @@ export const getAdminDashboard = async (req, res) => {
     const todayRevenue =
       todayRevenueAgg.length > 0 ? todayRevenueAgg[0].total : 0;
 
-    // 7️⃣ Pending Bills (students without active plan)
-    const activeStudentsWithPlan = await Payment.distinct("studentId", {
+    // 🔥 7️⃣ FIXED: Pending Bills (Payment → Fees)
+    const activeStudentsWithPlan = await Fees.distinct("studentId", {
       libraryId,
       endDate: { $gte: new Date() }
     });
@@ -114,6 +118,7 @@ export const getAdminDashboard = async (req, res) => {
     res.status(500).json({ message: error.message });
   }
 };
+
 export const getLast7DaysRevenue = async (req, res) => {
   const { libraryId } = req.user;
 

@@ -108,14 +108,40 @@ export const getStudentFees = async (req, res) => {
 
 export const getFees = async (req, res) => {
   try {
-    const fees = await Fees.find()
-      .populate("studentId", "name phone") // 🔥 YE ADD KARO
+    const { libraryId } = req.user;
+    const { month, year } = req.query;
+
+    let filter = { libraryId };
+
+    // 🔥 Apply month filter (timezone safe)
+    if (month && year) {
+      const m = Number(month);
+      const y = Number(year);
+
+      const startOfMonth = new Date(Date.UTC(y, m - 1, 1));
+      const endOfMonth = new Date(Date.UTC(y, m, 1));
+
+      filter.startDate = {
+        $gte: startOfMonth,
+        $lt: endOfMonth
+      };
+
+      // 🔍 DEBUG (optional but useful)
+      console.log("FILTER:", filter);
+    }
+
+    const fees = await Fees.find(filter)
+      .populate("studentId")
       .sort({ createdAt: -1 });
 
-    res.json(fees);
+    res.json({
+      success: true,
+      count: fees.length,
+      fees
+    });
 
-  } catch (error) {
-    res.status(500).json({ message: error.message });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
   }
 };
 
@@ -246,11 +272,9 @@ export const renewFees = async (req, res) => {
     res.status(500).json({ message: error.message });
   }
 };
-
 export const getRenewalList = async (req, res) => {
   try {
     const { libraryId } = req.user;
-
     const { month, year } = req.query;
 
     const today = new Date();
@@ -267,52 +291,72 @@ export const getRenewalList = async (req, res) => {
         match: { status: "active" },
         select: "enrollmentNumber name phone studyHours status"
       })
-      .sort({ createdAt: -1 }); // 🔥 important
+      .sort({ createdAt: -1 });
 
-    const filtered = fees
-      .filter(item => {
-        if (!item.studentId || !item.endDate) return false;
+    // 🔥 GROUP BY STUDENT
+    const grouped = {};
 
-        const endDate = new Date(item.endDate);
+    fees.forEach(item => {
+      if (!item.studentId) return;
 
-        return endDate >= startOfMonth && endDate <= endOfMonth;
-      })
-      .map(item => {
-        const student = item.studentId;
+      const id = item.studentId._id.toString();
 
-        const isExpired = new Date(item.endDate) < today;
+      if (!grouped[id]) grouped[id] = [];
+      grouped[id].push(item);
+    });
 
-        const renewedAfter =
-          new Date(item.paymentDate) > new Date(item.endDate);
+    // 🔥 PROCESS EACH STUDENT
+    const result = Object.values(grouped).map(records => {
 
-        let status = "warning";
+      // latest first
+      records.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 
-        if (isExpired && !renewedAfter) status = "pending";
-        else if (renewedAfter) status = "completed";
+      const latest = records[0];      // current plan
+      const previous = records[1];    // previous plan
 
-        return {
-          _id: item._id,
-          studentId: student._id,
-          enrollmentNumber: student.enrollmentNumber,
-          name: student.name,
-          phone: student.phone,
+      if (!latest.endDate) return null;
 
-          // 🔥 FIX HERE (IMPORTANT)
-          studyHours: item.hours,  
+      // 🔥 IMPORTANT FIX: use OLD expiry for filter
+      const expiryDate = previous
+        ? new Date(previous.endDate)
+        : new Date(latest.endDate);
 
-          lastRenewalDate: item.endDate,
-          renewDate: item.paymentDate,
-          nextRenewDate: item.endDate,
+      // 🔥 MONTH FILTER
+      if (!(expiryDate >= startOfMonth && expiryDate <= endOfMonth)) return null;
 
-          status,
-          canRenew: !renewedAfter
-        };
-      });
+      const student = latest.studentId;
+
+      const isExpired = expiryDate < today;
+      const isRenewed = !!previous;
+
+      let status = "warning";
+
+      if (isExpired && !isRenewed) status = "pending";
+      else if (isRenewed) status = "completed";
+
+      return {
+        _id: latest._id,
+        studentId: student._id,
+        enrollmentNumber: student.enrollmentNumber,
+        name: student.name,
+        phone: student.phone,
+
+        studyHours: latest.hours,
+
+        // 🔥 FIXED FIELDS
+        lastRenewalDate: expiryDate,       // OLD expiry (May)
+        renewDate: latest.paymentDate,     // when renewed
+        nextRenewDate: latest.endDate,     // new expiry
+
+        status,
+        canRenew: !isRenewed
+      };
+    }).filter(Boolean);
 
     res.json({
       success: true,
-      count: filtered.length,
-      data: filtered
+      count: result.length,
+      data: result
     });
 
   } catch (error) {
