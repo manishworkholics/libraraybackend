@@ -35,7 +35,24 @@ const expenseSchema = new mongoose.Schema(
       default: Date.now
     },
 
-    notes: String
+    notes: String,
+    // 🔥 IMPORTANT FIELDS
+    type: {
+      type: String,
+      enum: ["platform", "library"],
+      required: true
+    },
+    libraryId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Library",
+      default: null
+    },
+    // 🔥 ADD THIS
+    createdBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      required: true
+    },
   },
   { timestamps: true }
 );

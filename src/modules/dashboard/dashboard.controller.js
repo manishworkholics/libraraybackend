@@ -2,7 +2,7 @@ import Student from "../student/student.model.js";
 import Seat from "../seat/seat.model.js";
 import SeatBooking from "../commonmodel/seatBooking.model.js";
 import Attendance from "../attendance/attendance.model.js";
-import Payment from "../payment/payment.model.js";
+import Fees from "../fees/fees.model.js";
 
 export const getDashboardStats = async (req, res) => {
   try {
@@ -72,7 +72,7 @@ export const getAdminDashboard = async (req, res) => {
     });
 
     // 6️⃣ Today's Revenue
-    const todayRevenueAgg = await Payment.aggregate([
+    const todayRevenueAgg = await Fees.aggregate([
       {
         $match: {
           libraryId,
