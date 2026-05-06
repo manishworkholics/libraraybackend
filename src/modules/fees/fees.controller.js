@@ -3,22 +3,91 @@ import Fees from "./fees.model.js";
 /* Add Fees Entry */
 export const addFees = async (req, res) => {
   try {
-    const { studentId, amountPaid, planType, paymentDate, paymentMode } = req.body;
-
-    const record = await Fees.create({
+    const {
       studentId,
       amountPaid,
       planType,
       paymentDate,
       paymentMode,
-      libraryId: req.user.libraryId
+      hours,
+      startDate
+    } = req.body;
+
+    // ✅ validation
+    if (!studentId || !planType || !hours) {
+      return res.status(400).json({
+        message: "Student, plan type and hours are required"
+      });
+    }
+
+    // 🔥 FIX: ISO DATE SAFE PARSE
+    let start;
+
+    if (startDate) {
+      start = new Date(startDate); // ✅ direct parse
+    } else {
+      start = new Date();
+    }
+
+    // normalize time (important)
+    start.setHours(0, 0, 0, 0);
+
+    // ✅ plan duration map
+    const durationMap = {
+      monthly: 1,
+      threeMonths: 3,
+      sixMonths: 6,
+      yearly: 12
+    };
+
+    const months = durationMap[planType];
+
+    if (!months) {
+      return res.status(400).json({
+        message: "Invalid plan type"
+      });
+    }
+
+    // 🔥 END DATE CALCULATION
+    const end = new Date(start);
+    end.setMonth(end.getMonth() + months);
+
+    // edge case fix (31st issues)
+    if (end.getDate() !== start.getDate()) {
+      end.setDate(0);
+    }
+
+    // 🔥 FIX: PAYMENT DATE LOGIC
+    let payment;
+
+    if (paymentDate) {
+      payment = new Date(paymentDate);
+    } else {
+      payment = start; // ✅ IMPORTANT (old entry fix)
+    }
+
+    payment.setHours(0, 0, 0, 0);
+
+    // ✅ create record
+    const record = await Fees.create({
+      studentId,
+      amountPaid,
+      planType,
+      paymentDate: payment,
+      paymentMode,
+      hours,
+      libraryId: req.user.libraryId,
+      startDate: start,
+      endDate: end
     });
 
     res.status(201).json({
       message: "Fees added successfully",
       record
     });
+
   } catch (error) {
+    console.error("ERROR:", error);
     res.status(500).json({ message: error.message });
   }
 };
@@ -59,11 +128,23 @@ export const getRevenueStats = async (req, res) => {
       0
     );
 
-    const today = new Date().toISOString().split("T")[0];
+    // 🔥 FIX START
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const tomorrow = new Date(today);
+    tomorrow.setDate(today.getDate() + 1);
 
     const todayRevenue = fees
-      .filter(f => f.paymentDate && f.paymentDate.startsWith(today))
+      .filter(f => {
+        if (!f.paymentDate) return false;
+
+        const payment = new Date(f.paymentDate);
+
+        return payment >= today && payment < tomorrow;
+      })
       .reduce((sum, f) => sum + Number(f.amountPaid || 0), 0);
+    // 🔥 FIX END
 
     const activePlans = fees.length;
 
@@ -71,11 +152,11 @@ export const getRevenueStats = async (req, res) => {
       totalRevenue,
       todayRevenue,
       activePlans,
-      pendingRevenue: 0 // (optional)
+      pendingRevenue: 0
     });
 
   } catch (error) {
-    console.error("🔥 STATS ERROR:", error); // 👈 MUST ADD
+    console.error("🔥 STATS ERROR:", error);
     res.status(500).json({ message: error.message });
   }
 };
@@ -144,7 +225,9 @@ export const renewFees = async (req, res) => {
       planType,
       paymentDate,
       paymentMode: currentFees.paymentMode,
-      startDate: today
+      startDate: today,
+
+      hours: currentFees.hours   // 🔥 IMPORTANT FIX
     });
 
     res.json({
@@ -168,7 +251,15 @@ export const getRenewalList = async (req, res) => {
   try {
     const { libraryId } = req.user;
 
+    const { month, year } = req.query;
+
     const today = new Date();
+
+    const selectedMonth = month ? Number(month) : today.getMonth() + 1;
+    const selectedYear = year ? Number(year) : today.getFullYear();
+
+    const startOfMonth = new Date(selectedYear, selectedMonth - 1, 1);
+    const endOfMonth = new Date(selectedYear, selectedMonth, 0);
 
     const fees = await Fees.find({ libraryId })
       .populate({
@@ -176,73 +267,52 @@ export const getRenewalList = async (req, res) => {
         match: { status: "active" },
         select: "enrollmentNumber name phone studyHours status"
       })
-      .sort({ createdAt: -1 });
+      .sort({ createdAt: -1 }); // 🔥 important
 
-    // ✅ Group records by student
-    const grouped = {};
+    const filtered = fees
+      .filter(item => {
+        if (!item.studentId || !item.endDate) return false;
 
-    fees.forEach(item => {
-      if (!item.studentId) return;
+        const endDate = new Date(item.endDate);
 
-      const studentId = item.studentId._id.toString();
+        return endDate >= startOfMonth && endDate <= endOfMonth;
+      })
+      .map(item => {
+        const student = item.studentId;
 
-      if (!grouped[studentId]) {
-        grouped[studentId] = [];
-      }
+        const isExpired = new Date(item.endDate) < today;
 
-      grouped[studentId].push(item);
-    });
+        const renewedAfter =
+          new Date(item.paymentDate) > new Date(item.endDate);
 
-    const result = Object.values(grouped).map(records => {
-      // ✅ sort latest first
-      records.sort(
-        (a, b) => new Date(b.endDate) - new Date(a.endDate)
-      );
+        let status = "warning";
 
-      const latest = records[0];     // current
-      const previous = records[1];   // last
+        if (isExpired && !renewedAfter) status = "pending";
+        else if (renewedAfter) status = "completed";
 
-      const student = latest.studentId;
+        return {
+          _id: item._id,
+          studentId: student._id,
+          enrollmentNumber: student.enrollmentNumber,
+          name: student.name,
+          phone: student.phone,
 
-      const isExpired = latest.endDate && latest.endDate < today;
+          // 🔥 FIX HERE (IMPORTANT)
+          studyHours: item.hours,  
 
-      const isRecentlyRenewed =
-        new Date(latest.paymentDate).toDateString() === today.toDateString();
+          lastRenewalDate: item.endDate,
+          renewDate: item.paymentDate,
+          nextRenewDate: item.endDate,
 
-      let status = "warning";
+          status,
+          canRenew: !renewedAfter
+        };
+      });
 
-      if (isExpired) {
-        status = "pending";
-      } else if (isRecentlyRenewed) {
-        status = "completed";
-      }
-
-      return {
-        _id: latest._id,
-        studentId: student._id,
-        enrollmentNumber: student.enrollmentNumber,
-        name: student.name,
-        phone: student.phone,
-        studyHours: student.studyHours,
-
-        // ✅ correct last renewal
-        lastRenewalDate: previous
-  ? previous.endDate
-  : latest.endDate,
-
-        renewDate: latest.paymentDate,
-        nextRenewDate: latest.endDate,
-
-        status,
-        canRenew: status !== "completed"
-      };
-    });
-
-    // ✅ RESPONSE (missing tha)
     res.json({
       success: true,
-      count: result.length,
-      data: result
+      count: filtered.length,
+      data: filtered
     });
 
   } catch (error) {
