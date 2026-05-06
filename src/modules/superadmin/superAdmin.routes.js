@@ -65,9 +65,11 @@ router.get("/revenue-12-months", superAdminAuth, getLast12MonthsRevenue);
 
 router.get("/library-wise-revenue", superAdminAuth, getLibraryWiseRevenue);
 
-router.post("/expenses", superAdminAuth, addExpense);
-router.get("/expenses", getExpenses);
-router.delete("/expenses/:id", superAdminAuth, deleteExpense);
+// 🔥 SUPER ADMIN ROUTES
+
+router.post("/platform-expenses", superAdminAuth, addExpense);
+router.get("/platform-expenses", superAdminAuth, getExpenses);
+router.delete("/platform-expenses/:id", superAdminAuth, deleteExpense);
 
 router.get("/profit-dashboard", superAdminAuth, getProfitDashboard);
 router.get("/profit-graph", getMonthlyProfitGraph);

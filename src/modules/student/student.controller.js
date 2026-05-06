@@ -157,7 +157,7 @@ export const getAllStudents = async (req, res) => {
   try {
     const { libraryId } = req.user;
 
-    const students = await Student.find({ libraryId })
+    const students = await Student.find({ libraryId, status: "active" })
       .sort({ createdAt: -1 });
 
     res.json(students);

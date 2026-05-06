@@ -424,7 +424,12 @@ export const addExpense = async (req, res) => {
       category,
       mode,
       date: date ? new Date(date) : new Date(),
-      status
+      status,
+
+      // 🔥 REQUIRED FIELDS
+      type: "platform",
+      libraryId: null,
+      createdBy: req.user.userId   // ✅ FIX
     });
 
     res.json({
@@ -433,6 +438,7 @@ export const addExpense = async (req, res) => {
     });
 
   } catch (error) {
+    console.log("ERROR:", error);
     res.status(500).json({ message: error.message });
   }
 };
@@ -440,7 +446,9 @@ export const addExpense = async (req, res) => {
 export const getExpenses = async (req, res) => {
   try {
 
-    const expenses = await Expense.find().sort({ createdAt: -1 });
+    const expenses = await Expense.find({
+      type: "platform"   // 🔥 only platform expenses
+    }).sort({ createdAt: -1 });
 
     res.json({
       expenses
@@ -456,6 +464,17 @@ export const deleteExpense = async (req, res) => {
 
     const { id } = req.params;
 
+    const expense = await Expense.findOne({
+      _id: id,
+      type: "platform"   // 🔥 safety check
+    });
+
+    if (!expense) {
+      return res.status(404).json({
+        message: "Expense not found"
+      });
+    }
+
     await Expense.findByIdAndDelete(id);
 
     res.json({
@@ -470,6 +489,7 @@ export const deleteExpense = async (req, res) => {
 export const getProfitDashboard = async (req, res) => {
   try {
 
+    // ✅ TOTAL REVENUE (subscription)
     const revenueAgg = await PlatformSubscription.aggregate([
       {
         $match: { status: "Success" }
@@ -482,7 +502,11 @@ export const getProfitDashboard = async (req, res) => {
       }
     ]);
 
+    // ✅ ONLY PLATFORM EXPENSE
     const expenseAgg = await Expense.aggregate([
+      {
+        $match: { type: "platform" }   // 🔥 FIX
+      },
       {
         $group: {
           _id: null,
@@ -507,7 +531,6 @@ export const getProfitDashboard = async (req, res) => {
     res.status(500).json({ message: error.message });
   }
 };
-
 export const getMonthlyProfitGraph = async (req, res) => {
   try {
 
@@ -734,7 +757,6 @@ export const setManualSubscription = async (req, res) => {
     });
   }
 };
-
 
 // super admin get all complaints
 export const getAllComplaints = async (req, res) => {
