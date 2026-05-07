@@ -28,9 +28,13 @@ const feesSchema = new mongoose.Schema(
       ],
       required: true
     },
+    hours: {
+      type: Number,
+      required: true
+    },
     paymentDate: {
-      type: String, // YYYY-MM-DD
-      default: () => new Date().toISOString().split("T")[0]
+      type: Date,
+      default: Date.now
     },
 
     paymentMode: {
@@ -40,7 +44,7 @@ const feesSchema = new mongoose.Schema(
     },
     startDate: {
       type: Date,
-      default: Date.now
+      required: true
     },
 
     endDate: {
@@ -52,25 +56,28 @@ const feesSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-feesSchema.pre("save", function () {
+feesSchema.pre("save", function (next) { 
   const start = new Date(this.startDate);
+  const end = new Date(start);
 
   switch (this.planType) {
     case "monthly":
-      this.endDate = new Date(start.setMonth(start.getMonth() + 1));
+      end.setMonth(end.getMonth() + 1);
       break;
     case "threeMonths":
-      this.endDate = new Date(start.setMonth(start.getMonth() + 3));
+      end.setMonth(end.getMonth() + 3);
       break;
     case "sixMonths":
-      this.endDate = new Date(start.setMonth(start.getMonth() + 6));
+      end.setMonth(end.getMonth() + 6);
       break;
     case "yearly":
-      this.endDate = new Date(start.setFullYear(start.getFullYear() + 1));
+      end.setFullYear(end.getFullYear() + 1);
       break;
     default:
-      this.endDate = start;
+      break;
   }
+
+  this.endDate = end;
 });
 
 export default mongoose.models.Fees || mongoose.model("Fees", feesSchema);

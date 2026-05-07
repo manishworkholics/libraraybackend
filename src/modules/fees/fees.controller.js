@@ -3,22 +3,91 @@ import Fees from "./fees.model.js";
 /* Add Fees Entry */
 export const addFees = async (req, res) => {
   try {
-    const { studentId, amountPaid, planType, paymentDate, paymentMode } = req.body;
-
-    const record = await Fees.create({
+    const {
       studentId,
       amountPaid,
       planType,
       paymentDate,
       paymentMode,
-      libraryId: req.user.libraryId
+      hours,
+      startDate
+    } = req.body;
+
+    // ✅ validation
+    if (!studentId || !planType || !hours) {
+      return res.status(400).json({
+        message: "Student, plan type and hours are required"
+      });
+    }
+
+    // 🔥 FIX: ISO DATE SAFE PARSE
+    let start;
+
+    if (startDate) {
+      start = new Date(startDate); // ✅ direct parse
+    } else {
+      start = new Date();
+    }
+
+    // normalize time (important)
+    start.setHours(0, 0, 0, 0);
+
+    // ✅ plan duration map
+    const durationMap = {
+      monthly: 1,
+      threeMonths: 3,
+      sixMonths: 6,
+      yearly: 12
+    };
+
+    const months = durationMap[planType];
+
+    if (!months) {
+      return res.status(400).json({
+        message: "Invalid plan type"
+      });
+    }
+
+    // 🔥 END DATE CALCULATION
+    const end = new Date(start);
+    end.setMonth(end.getMonth() + months);
+
+    // edge case fix (31st issues)
+    if (end.getDate() !== start.getDate()) {
+      end.setDate(0);
+    }
+
+    // 🔥 FIX: PAYMENT DATE LOGIC
+    let payment;
+
+    if (paymentDate) {
+      payment = new Date(paymentDate);
+    } else {
+      payment = start; // ✅ IMPORTANT (old entry fix)
+    }
+
+    payment.setHours(0, 0, 0, 0);
+
+    // ✅ create record
+    const record = await Fees.create({
+      studentId,
+      amountPaid,
+      planType,
+      paymentDate: payment,
+      paymentMode,
+      hours,
+      libraryId: req.user.libraryId,
+      startDate: start,
+      endDate: end
     });
 
     res.status(201).json({
       message: "Fees added successfully",
       record
     });
+
   } catch (error) {
+    console.error("ERROR:", error);
     res.status(500).json({ message: error.message });
   }
 };
@@ -39,14 +108,40 @@ export const getStudentFees = async (req, res) => {
 
 export const getFees = async (req, res) => {
   try {
-    const fees = await Fees.find()
-      .populate("studentId", "name phone") // 🔥 YE ADD KARO
+    const { libraryId } = req.user;
+    const { month, year } = req.query;
+
+    let filter = { libraryId };
+
+    // 🔥 Apply month filter (timezone safe)
+    if (month && year) {
+      const m = Number(month);
+      const y = Number(year);
+
+      const startOfMonth = new Date(Date.UTC(y, m - 1, 1));
+      const endOfMonth = new Date(Date.UTC(y, m, 1));
+
+      filter.startDate = {
+        $gte: startOfMonth,
+        $lt: endOfMonth
+      };
+
+      // 🔍 DEBUG (optional but useful)
+      console.log("FILTER:", filter);
+    }
+
+    const fees = await Fees.find(filter)
+      .populate("studentId")
       .sort({ createdAt: -1 });
 
-    res.json(fees);
+    res.json({
+      success: true,
+      count: fees.length,
+      fees
+    });
 
-  } catch (error) {
-    res.status(500).json({ message: error.message });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
   }
 };
 
@@ -59,11 +154,23 @@ export const getRevenueStats = async (req, res) => {
       0
     );
 
-    const today = new Date().toISOString().split("T")[0];
+    // 🔥 FIX START
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const tomorrow = new Date(today);
+    tomorrow.setDate(today.getDate() + 1);
 
     const todayRevenue = fees
-      .filter(f => f.paymentDate && f.paymentDate.startsWith(today))
+      .filter(f => {
+        if (!f.paymentDate) return false;
+
+        const payment = new Date(f.paymentDate);
+
+        return payment >= today && payment < tomorrow;
+      })
       .reduce((sum, f) => sum + Number(f.amountPaid || 0), 0);
+    // 🔥 FIX END
 
     const activePlans = fees.length;
 
@@ -71,11 +178,11 @@ export const getRevenueStats = async (req, res) => {
       totalRevenue,
       todayRevenue,
       activePlans,
-      pendingRevenue: 0 // (optional)
+      pendingRevenue: 0
     });
 
   } catch (error) {
-    console.error("🔥 STATS ERROR:", error); // 👈 MUST ADD
+    console.error("🔥 STATS ERROR:", error);
     res.status(500).json({ message: error.message });
   }
 };
@@ -144,7 +251,9 @@ export const renewFees = async (req, res) => {
       planType,
       paymentDate,
       paymentMode: currentFees.paymentMode,
-      startDate: today
+      startDate: today,
+
+      hours: currentFees.hours   // 🔥 IMPORTANT FIX
     });
 
     res.json({
@@ -163,12 +272,18 @@ export const renewFees = async (req, res) => {
     res.status(500).json({ message: error.message });
   }
 };
-
 export const getRenewalList = async (req, res) => {
   try {
     const { libraryId } = req.user;
+    const { month, year } = req.query;
 
     const today = new Date();
+
+    const selectedMonth = month ? Number(month) : today.getMonth() + 1;
+    const selectedYear = year ? Number(year) : today.getFullYear();
+
+    const startOfMonth = new Date(selectedYear, selectedMonth - 1, 1);
+    const endOfMonth = new Date(selectedYear, selectedMonth, 0);
 
     const fees = await Fees.find({ libraryId })
       .populate({
@@ -178,44 +293,46 @@ export const getRenewalList = async (req, res) => {
       })
       .sort({ createdAt: -1 });
 
-    // ✅ Group records by student
+    // 🔥 GROUP BY STUDENT
     const grouped = {};
 
     fees.forEach(item => {
       if (!item.studentId) return;
 
-      const studentId = item.studentId._id.toString();
+      const id = item.studentId._id.toString();
 
-      if (!grouped[studentId]) {
-        grouped[studentId] = [];
-      }
-
-      grouped[studentId].push(item);
+      if (!grouped[id]) grouped[id] = [];
+      grouped[id].push(item);
     });
 
+    // 🔥 PROCESS EACH STUDENT
     const result = Object.values(grouped).map(records => {
-      // ✅ sort latest first
-      records.sort(
-        (a, b) => new Date(b.endDate) - new Date(a.endDate)
-      );
 
-      const latest = records[0];     // current
-      const previous = records[1];   // last
+      // latest first
+      records.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+
+      const latest = records[0];      // current plan
+      const previous = records[1];    // previous plan
+
+      if (!latest.endDate) return null;
+
+      // 🔥 IMPORTANT FIX: use OLD expiry for filter
+      const expiryDate = previous
+        ? new Date(previous.endDate)
+        : new Date(latest.endDate);
+
+      // 🔥 MONTH FILTER
+      if (!(expiryDate >= startOfMonth && expiryDate <= endOfMonth)) return null;
 
       const student = latest.studentId;
 
-      const isExpired = latest.endDate && latest.endDate < today;
-
-      const isRecentlyRenewed =
-        new Date(latest.paymentDate).toDateString() === today.toDateString();
+      const isExpired = expiryDate < today;
+      const isRenewed = !!previous;
 
       let status = "warning";
 
-      if (isExpired) {
-        status = "pending";
-      } else if (isRecentlyRenewed) {
-        status = "completed";
-      }
+      if (isExpired && !isRenewed) status = "pending";
+      else if (isRenewed) status = "completed";
 
       return {
         _id: latest._id,
@@ -223,22 +340,19 @@ export const getRenewalList = async (req, res) => {
         enrollmentNumber: student.enrollmentNumber,
         name: student.name,
         phone: student.phone,
-        studyHours: student.studyHours,
 
-        // ✅ correct last renewal
-        lastRenewalDate: previous
-  ? previous.endDate
-  : latest.endDate,
+        studyHours: latest.hours,
 
-        renewDate: latest.paymentDate,
-        nextRenewDate: latest.endDate,
+        // 🔥 FIXED FIELDS
+        lastRenewalDate: expiryDate,       // OLD expiry (May)
+        renewDate: latest.paymentDate,     // when renewed
+        nextRenewDate: latest.endDate,     // new expiry
 
         status,
-        canRenew: status !== "completed"
+        canRenew: !isRenewed
       };
-    });
+    }).filter(Boolean);
 
-    // ✅ RESPONSE (missing tha)
     res.json({
       success: true,
       count: result.length,
