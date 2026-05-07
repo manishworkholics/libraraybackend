@@ -187,29 +187,49 @@ export const getMonthlyAttendancePercentage = async (req, res) => {
 
 export const getTodayAttendanceSummary = async (req, res) => {
   try {
+
     const { libraryId } = req.user;
 
-    const startOfDay = new Date();
-    startOfDay.setHours(0, 0, 0, 0);
+    const today = new Date();
 
-    const endOfDay = new Date();
-    endOfDay.setHours(23, 59, 59, 999);
+    const startOfDay = new Date(
+      today.getFullYear(),
+      today.getMonth(),
+      today.getDate(),
+      0,
+      0,
+      0
+    );
 
+    const endOfDay = new Date(
+      today.getFullYear(),
+      today.getMonth(),
+      today.getDate(),
+      23,
+      59,
+      59
+    );
+
+    // 🔥 Total Active Students
     const totalStudents = await Student.countDocuments({
       libraryId,
       status: "active"
     });
 
+    // 🔥 Present Today
     const presentToday = await Attendance.countDocuments({
       libraryId,
-      date: {
+
+      checkInTime: {
         $gte: startOfDay,
         $lte: endOfDay
       }
     });
 
+    // 🔥 Absent
     const absentToday = totalStudents - presentToday;
 
+    // 🔥 Attendance Rate
     const attendanceRate =
       totalStudents > 0
         ? ((presentToday / totalStudents) * 100).toFixed(2)
@@ -223,6 +243,11 @@ export const getTodayAttendanceSummary = async (req, res) => {
     });
 
   } catch (error) {
-    res.status(500).json({ message: error.message });
+
+    console.error("ATTENDANCE SUMMARY ERROR:", error);
+
+    res.status(500).json({
+      message: error.message
+    });
   }
 };

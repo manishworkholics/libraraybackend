@@ -125,9 +125,6 @@ export const getFees = async (req, res) => {
         $gte: startOfMonth,
         $lt: endOfMonth
       };
-
-      // 🔍 DEBUG (optional but useful)
-      console.log("FILTER:", filter);
     }
 
     const fees = await Fees.find(filter)
