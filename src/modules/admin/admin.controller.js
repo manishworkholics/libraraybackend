@@ -196,28 +196,43 @@ export const getAdminProfitDashboard = async (req, res) => {
 
 export const getAdminMonthlyProfitGraph = async (req, res) => {
   try {
+    const adminId = req.user._id;
 
-    const adminId = req.user._id; // 🔥 logged in admin
+    // 👉 Optional: year filter (default current year)
+    const year = req.query.year
+      ? Number(req.query.year)
+      : new Date().getFullYear();
 
+    const startDate = new Date(`${year}-01-01`);
+    const endDate = new Date(`${year}-12-31`);
+
+    // 🔥 REVENUE (FIXED)
     const revenue = await Fees.aggregate([
       {
-        $match: { adminId: adminId }   // ✅ FILTER
+        $match: {
+          adminId: adminId,
+          paymentDate: { $gte: startDate, $lte: endDate }
+        }
       },
       {
         $group: {
           _id: {
-            month: { $month: "$createdAt" },
-            year: { $year: "$createdAt" }
+            month: { $month: "$paymentDate" },
+            year: { $year: "$paymentDate" }
           },
-          total: { $sum: "$amount" }
+          total: { $sum: "$amountPaid" } // ✅ FIXED FIELD
         }
       },
       { $sort: { "_id.year": 1, "_id.month": 1 } }
     ]);
 
+    // 🔥 EXPENSE
     const expense = await Expense.aggregate([
       {
-        $match: { adminId: adminId }   // ✅ FILTER
+        $match: {
+          adminId: adminId,
+          createdAt: { $gte: startDate, $lte: endDate }
+        }
       },
       {
         $group: {
@@ -231,12 +246,18 @@ export const getAdminMonthlyProfitGraph = async (req, res) => {
       { $sort: { "_id.year": 1, "_id.month": 1 } }
     ]);
 
-    res.json({
+    // ✅ SEND RESPONSE
+    res.status(200).json({
+      success: true,
       revenue,
       expense
     });
 
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    console.error("Profit Graph Error:", error);
+    res.status(500).json({
+      success: false,
+      message: error.message
+    });
   }
 };

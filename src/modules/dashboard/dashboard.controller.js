@@ -3,27 +3,70 @@ import Seat from "../seat/seat.model.js";
 import SeatBooking from "../commonmodel/seatBooking.model.js";
 import Attendance from "../attendance/attendance.model.js";
 import Fees from "../fees/fees.model.js";
+import Complaint from "../complaint/complaint.model.js";
 
 export const getDashboardStats = async (req, res) => {
   try {
-    const today = new Date().toISOString().split("T")[0];
 
-    const totalStudents = await Student.countDocuments();
+    const { libraryId } = req.user;
 
-    const todayAttendance = await Attendance.countDocuments({
-      date: today
+    // 🔥 Local date range
+    const now = new Date();
+
+    const startOfDay = new Date(
+      now.getFullYear(),
+      now.getMonth(),
+      now.getDate(),
+      0,
+      0,
+      0,
+      0
+    );
+
+    const endOfDay = new Date(
+      now.getFullYear(),
+      now.getMonth(),
+      now.getDate(),
+      23,
+      59,
+      59,
+      999
+    );
+
+    // 🔥 YYYY-MM-DD for paymentDate
+    const today = now.toISOString().split("T")[0];
+
+    // 🔥 Total Active Students
+    const totalStudents = await Student.countDocuments({
+      libraryId,
+      status: "active"
     });
 
+    // 🔥 Today's Attendance
+    const todayAttendance = await Attendance.countDocuments({
+      libraryId,
+
+      checkInTime: {
+        $gte: startOfDay,
+        $lte: endOfDay
+      }
+    });
+
+    // 🔥 Today's Revenue
     const todayFeesRecords = await Fees.find({
+      libraryId,
       paymentDate: today
     });
 
     const todayCollection = todayFeesRecords.reduce(
-      (sum, item) => sum + item.amountPaid,
+      (sum, item) => sum + Number(item.amountPaid || 0),
       0
     );
 
-    const totalFeesEntries = await Fees.countDocuments();
+    // 🔥 Total Fees Entries
+    const totalFeesEntries = await Fees.countDocuments({
+      libraryId
+    });
 
     res.json({
       totalStudents,
@@ -31,22 +74,50 @@ export const getDashboardStats = async (req, res) => {
       todayCollection,
       totalFeesEntries
     });
+
   } catch (error) {
-    res.status(500).json({ message: error.message });
+
+    console.error("DASHBOARD STATS ERROR:", error);
+
+    res.status(500).json({
+      success: false,
+      message: error.message
+    });
   }
 };
 
 export const getAdminDashboard = async (req, res) => {
   try {
+
     const { libraryId } = req.user;
 
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    // 🔥 Local Date Range
+    const now = new Date();
 
-    const tomorrow = new Date(today);
-    tomorrow.setDate(today.getDate() + 1);
+    const startOfDay = new Date(
+      now.getFullYear(),
+      now.getMonth(),
+      now.getDate(),
+      0,
+      0,
+      0,
+      0
+    );
 
-    // 1️⃣ Total Students
+    const endOfDay = new Date(
+      now.getFullYear(),
+      now.getMonth(),
+      now.getDate(),
+      23,
+      59,
+      59,
+      999
+    );
+
+    // 🔥 YYYY-MM-DD for paymentDate
+    const today = now.toISOString().split("T")[0];
+
+    // 1️⃣ Total Active Students
     const totalStudents = await Student.countDocuments({
       libraryId,
       status: "active"
@@ -58,51 +129,116 @@ export const getAdminDashboard = async (req, res) => {
     });
 
     // 3️⃣ Occupied Seats
-    const occupiedSeats = await SeatBooking.distinct("seatId", {
-      libraryId,
-      status: "active"
-    });
+    const occupiedSeats = await SeatBooking.distinct(
+      "seatId",
+      {
+        libraryId,
+        status: "active"
+      }
+    );
 
     const occupiedCount = occupiedSeats.length;
 
     // 4️⃣ Available Seats
-    const availableSeats = totalSeats - occupiedCount;
+    const availableSeats =
+      totalSeats - occupiedCount;
 
     // 5️⃣ Today's Attendance
-    const todayAttendance = await Attendance.countDocuments({
-      libraryId,
-      date: today
-    });
+    const todayAttendance =
+      await Attendance.countDocuments({
+        libraryId,
+
+        checkInTime: {
+          $gte: startOfDay,
+          $lte: endOfDay
+        }
+      });
 
     // 6️⃣ Today's Revenue
-    const todayRevenueAgg = await Fees.aggregate([
-      {
-        $match: {
-          libraryId,
-          paymentDate: {
-            $gte: today,
-            $lt: tomorrow
-          }
-        }
-      },
-      {
-        $group: {
-          _id: null,
-          total: { $sum: "$amountPaid" }
-        }
-      }
-    ]);
+    const todayFeesRecords =
+      await Fees.find({
+        libraryId,
+        paymentDate: today
+      });
 
     const todayRevenue =
-      todayRevenueAgg.length > 0 ? todayRevenueAgg[0].total : 0;
+      todayFeesRecords.reduce(
+        (sum, item) =>
+          sum +
+          Number(item.amountPaid || 0),
+        0
+      );
 
-    // 🔥 7️⃣ FIXED: Pending Bills (Payment → Fees)
-    const activeStudentsWithPlan = await Fees.distinct("studentId", {
-      libraryId,
-      endDate: { $gte: new Date() }
-    });
+    // 7️⃣ Monthly Pending Renewals ✅
+    const currentMonth =
+      new Date().getMonth();
 
-    const pendingBills = totalStudents - activeStudentsWithPlan.length;
+    const currentYear =
+      new Date().getFullYear();
+
+    const activeStudents =
+      await Student.find({
+        libraryId,
+        status: "active"
+      });
+
+    let pendingBills = 0;
+
+    for (const student of activeStudents) {
+
+      // 🔥 Latest fees
+      const latestFees =
+        await Fees.findOne({
+          libraryId,
+          studentId: student._id
+        }).sort({ createdAt: -1 });
+
+      // 🔥 no fees
+      if (!latestFees) continue;
+
+      // 🔥 missing end date
+      if (!latestFees.endDate) continue;
+
+      const expiryDate =
+        new Date(latestFees.endDate);
+
+      const expiryMonth =
+        expiryDate.getMonth();
+
+      const expiryYear =
+        expiryDate.getFullYear();
+
+      // 🔥 current month expired renewals only
+      if (
+        expiryMonth === currentMonth &&
+        expiryYear === currentYear &&
+        expiryDate < new Date()
+      ) {
+        pendingBills++;
+      }
+    }
+
+    // 8️⃣ Pending Complaints
+    let pendingComplaints = 0;
+
+    try {
+
+      if (Complaint) {
+
+        pendingComplaints =
+          await Complaint.countDocuments({
+            libraryId,
+            status: "pending"
+          });
+      }
+
+    } catch (err) {
+
+      console.log(
+        "Complaint fetch error:",
+        err.message
+      );
+    }
 
     res.json({
       totalStudents,
@@ -111,11 +247,20 @@ export const getAdminDashboard = async (req, res) => {
       availableSeats,
       todayAttendance,
       todayRevenue,
-      pendingBills
+      pendingBills,
+      pendingComplaints
     });
 
   } catch (error) {
-    res.status(500).json({ message: error.message });
+
+    console.error(
+      "ADMIN DASHBOARD ERROR:",
+      error
+    );
+
+    res.status(500).json({
+      message: error.message
+    });
   }
 };
 
@@ -144,4 +289,299 @@ export const getLast7DaysRevenue = async (req, res) => {
   ]);
 
   res.json(revenue);
+};
+
+export const getGraphData = async (req, res) => {
+  try {
+
+    const { libraryId } = req.user;
+
+    const { type, range } = req.query;
+
+    const now = new Date();
+
+    let labels = [];
+
+    // 🔥 7 DAYS
+    if (range === "7days") {
+
+      for (let i = 6; i >= 0; i--) {
+
+        const d = new Date();
+
+        d.setDate(now.getDate() - i);
+
+        labels.push({
+          label: d.toLocaleDateString("en-US", {
+            weekday: "short"
+          }),
+
+          start: new Date(d.setHours(0, 0, 0, 0)),
+
+          end: new Date(d.setHours(23, 59, 59, 999))
+        });
+      }
+    }
+
+    // 🔥 30 DAYS
+    else if (range === "30days") {
+
+      for (let i = 29; i >= 0; i--) {
+
+        const d = new Date();
+
+        d.setDate(now.getDate() - i);
+
+        labels.push({
+          label: d.getDate().toString(),
+
+          start: new Date(d.setHours(0, 0, 0, 0)),
+
+          end: new Date(d.setHours(23, 59, 59, 999))
+        });
+      }
+    }
+
+    // 🔥 MONTHLY
+    else if (range === "monthly") {
+
+      const daysInMonth = new Date(
+        now.getFullYear(),
+        now.getMonth() + 1,
+        0
+      ).getDate();
+
+      for (let i = 1; i <= daysInMonth; i++) {
+
+        const d = new Date(
+          now.getFullYear(),
+          now.getMonth(),
+          i
+        );
+
+        labels.push({
+          label: i.toString(),
+
+          start: new Date(d.setHours(0, 0, 0, 0)),
+
+          end: new Date(d.setHours(23, 59, 59, 999))
+        });
+      }
+    }
+
+    // 🔥 YEARLY
+    else if (range === "yearly") {
+
+      for (let i = 0; i < 12; i++) {
+
+        const start = new Date(
+          now.getFullYear(),
+          i,
+          1
+        );
+
+        const end = new Date(
+          now.getFullYear(),
+          i + 1,
+          0,
+          23,
+          59,
+          59,
+          999
+        );
+
+        labels.push({
+          label: start.toLocaleString("default", {
+            month: "short"
+          }),
+
+          start,
+
+          end
+        });
+      }
+    }
+
+    // 🔥 DEFAULT 7 DAYS
+    else {
+
+      for (let i = 6; i >= 0; i--) {
+
+        const d = new Date();
+
+        d.setDate(now.getDate() - i);
+
+        labels.push({
+          label: d.toLocaleDateString("en-US", {
+            weekday: "short"
+          }),
+
+          start: new Date(d.setHours(0, 0, 0, 0)),
+
+          end: new Date(d.setHours(23, 59, 59, 999))
+        });
+      }
+    }
+
+    let data = [];
+
+    // 🔥 STUDENTS GRAPH
+    if (type === "students") {
+
+      for (const item of labels) {
+
+        const total = await Student.countDocuments({
+          libraryId,
+
+          createdAt: {
+            $gte: item.start,
+            $lte: item.end
+          }
+        });
+
+        data.push({
+          label: item.label,
+          value: total
+        });
+      }
+    }
+
+    // 🔥 REVENUE GRAPH
+    else if (type === "revenue") {
+
+      for (const item of labels) {
+
+        const fees = await Fees.find({
+          libraryId,
+
+          startDate: {
+            $gte: item.start,
+            $lte: item.end
+          }
+        });
+
+        const total = fees.reduce(
+          (sum, fee) => sum + Number(fee.amountPaid || 0),
+          0
+        );
+
+        data.push({
+          label: item.label,
+          value: total
+        });
+      }
+    }
+
+    // 🔥 ATTENDANCE GRAPH
+    else if (type === "attendance") {
+
+      for (const item of labels) {
+
+        const total = await Attendance.countDocuments({
+          libraryId,
+
+          date: {
+            $gte: item.start,
+            $lte: item.end
+          }
+        });
+
+        data.push({
+          label: item.label,
+          value: total
+        });
+      }
+    }
+
+    // 🔥 SEATS GRAPH
+    else if (type === "seats") {
+
+      const totalSeats = await Seat.countDocuments({
+        libraryId
+      });
+
+      data = labels.map(item => ({
+        label: item.label,
+        value: totalSeats
+      }));
+    }
+
+    res.json(data);
+
+  } catch (error) {
+
+    console.error("GRAPH ERROR:", error);
+
+    res.status(500).json({
+      message: error.message
+    });
+  }
+};
+
+export const getRecentActivities = async (req, res) => {
+  try {
+
+    const { libraryId } = req.user;
+
+    const attendance = await Attendance.find({
+      libraryId
+    })
+      .populate("studentId", "name")
+      .sort({ createdAt: -1 })
+      .limit(5);
+
+    const renewals = await Fees.find({
+      libraryId
+    })
+      .populate("studentId", "name")
+      .sort({ createdAt: -1 })
+      .limit(5);
+
+    const activities = [];
+
+    // 🔥 Attendance Activities
+    attendance.forEach(item => {
+
+      activities.push({
+        type: "attendance",
+
+        name: item.studentId?.name,
+
+        message: "Marked Present",
+
+        createdAt: item.createdAt
+      });
+    });
+
+    // 🔥 Renewal Activities
+    renewals.forEach(item => {
+
+      activities.push({
+        type: "renewal",
+
+        name: item.studentId?.name,
+
+        message: "Renewed Membership",
+
+        createdAt: item.createdAt
+      });
+    });
+
+    // 🔥 Latest first
+    activities.sort(
+      (a, b) =>
+        new Date(b.createdAt) -
+        new Date(a.createdAt)
+    );
+
+    res.json(
+      activities.slice(0, 8)
+    );
+
+  } catch (error) {
+
+    res.status(500).json({
+      message: error.message
+    });
+  }
 };

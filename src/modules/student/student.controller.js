@@ -155,15 +155,30 @@ export const createStudent = async (req, res) => {
 /* Get All Students (Library Only) */
 export const getAllStudents = async (req, res) => {
   try {
+
     const { libraryId } = req.user;
 
-    const students = await Student.find({ libraryId, status: "active" })
+    // 🔥 Only active students
+    const students = await Student.find({
+      libraryId,
+      status: "active"
+    })
       .sort({ createdAt: -1 });
 
-    res.json(students);
+    res.json({
+      success: true,
+      count: students.length,
+      students
+    });
 
   } catch (error) {
-    res.status(500).json({ message: error.message });
+
+    console.error("GET STUDENTS ERROR:", error);
+
+    res.status(500).json({
+      success: false,
+      message: error.message
+    });
   }
 };
 
