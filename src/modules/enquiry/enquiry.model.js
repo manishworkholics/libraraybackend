@@ -22,7 +22,6 @@ const enquirySchema = new mongoose.Schema(
 
     slot: {
       type: String,
-      required: true
     },
 
     course: {

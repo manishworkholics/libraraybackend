@@ -158,9 +158,9 @@ export const deleteEnquiry = async (req, res) => {
 export const createWebsiteEnquiry = async (req, res) => {
   try {
 
-    const { name, contact, address, slot, course, libraryId } = req.body;
+    const { name, contact, address, course, libraryId } = req.body;
 
-    if (!name || !contact || !address || !slot || !course || !libraryId) {
+    if (!name || !contact || !address || !course || !libraryId) {
       return res.status(400).json({
         message: "Please fill all required fields"
       });
@@ -170,7 +170,6 @@ export const createWebsiteEnquiry = async (req, res) => {
       name,
       contact,
       address,
-      slot,
       course,
       libraryId,
       source: "website"
