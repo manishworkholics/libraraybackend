@@ -158,10 +158,9 @@ export const getAllStudents = async (req, res) => {
 
     const { libraryId } = req.user;
 
-    // 🔥 Only active students
+    // 🔥 Show all students
     const students = await Student.find({
-      libraryId,
-      status: "active"
+      libraryId
     })
       .sort({ createdAt: -1 });
 
@@ -173,7 +172,10 @@ export const getAllStudents = async (req, res) => {
 
   } catch (error) {
 
-    console.error("GET STUDENTS ERROR:", error);
+    console.error(
+      "GET STUDENTS ERROR:",
+      error
+    );
 
     res.status(500).json({
       success: false,
@@ -181,7 +183,6 @@ export const getAllStudents = async (req, res) => {
     });
   }
 };
-
 /* Get Single Student */
 export const getStudentById = async (req, res) => {
   try {
