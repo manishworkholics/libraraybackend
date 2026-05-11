@@ -213,62 +213,135 @@ const formatLocalDate = (date) => {
 
 export const renewFees = async (req, res) => {
   try {
+
     const { id } = req.params;
-    const { duration } = req.body;
-    const planType = planTypeByDuration[Number(duration)];
+
+    // 🔥 NEW
+    const {
+      duration,
+      renewType
+    } = req.body;
+
+    const planType =
+      planTypeByDuration[
+      Number(duration)
+      ];
 
     if (!planType) {
+
       return res.status(400).json({
-        message: "Please select a valid renewal duration"
+        message:
+          "Please select a valid renewal duration"
       });
     }
 
-    const currentFees = await Fees.findOne({
-      _id: id,
-      libraryId: req.user.libraryId
-    }).populate({
-      path: "studentId",
-      match: { status: "active" },
-      select: "_id status"
-    });
+    const currentFees =
+      await Fees.findOne({
+        _id: id,
+        libraryId:
+          req.user.libraryId
+      }).populate({
+        path: "studentId",
+        match: {
+          status: "active"
+        },
+        select: "_id status"
+      });
 
-    if (!currentFees || !currentFees.studentId) {
+    if (
+      !currentFees ||
+      !currentFees.studentId
+    ) {
+
       return res.status(404).json({
-        message: "Active student renewal record not found"
+        message:
+          "Active student renewal record not found"
       });
     }
 
     const today = new Date();
-    const paymentDate = formatLocalDate(today);
 
-    const renewedFees = await Fees.create({
-      studentId: currentFees.studentId._id,
-      libraryId: req.user.libraryId,
-      amountPaid: currentFees.amountPaid,
-      planType,
-      paymentDate,
-      paymentMode: currentFees.paymentMode,
-      startDate: today,
+    const paymentDate =
+      formatLocalDate(today);
 
-      hours: currentFees.hours   // 🔥 IMPORTANT FIX
-    });
+    // 🔥 BOTH OPTIONS
+    let renewalStartDate;
+
+    // 🔥 FINAL FIX
+
+    if (renewType === "continue") {
+
+      // old expiry date
+      renewalStartDate = new Date(
+        currentFees.endDate
+      );
+
+    } else {
+
+      // today date
+      renewalStartDate = new Date();
+    }
+
+    const renewedFees =
+      await Fees.create({
+
+        studentId:
+          currentFees.studentId._id,
+
+        libraryId:
+          req.user.libraryId,
+
+        amountPaid:
+          currentFees.amountPaid,
+
+        planType,
+
+        paymentDate,
+
+        paymentMode:
+          currentFees.paymentMode,
+
+        // 🔥 UPDATED
+        startDate:
+          renewalStartDate,
+
+        hours:
+          currentFees.hours
+      });
 
     res.json({
       success: true,
-      message: "Renewal updated successfully",
+
+      message:
+        "Renewal updated successfully",
+
       data: {
-        _id: renewedFees._id,
-        studentId: renewedFees.studentId,
-        renewDate: renewedFees.paymentDate,
-        nextRenewDate: renewedFees.endDate,
-        status: "completed"
+
+        _id:
+          renewedFees._id,
+
+        studentId:
+          renewedFees.studentId,
+
+        renewDate:
+          renewedFees.paymentDate,
+
+        nextRenewDate:
+          renewedFees.endDate,
+
+        status:
+          "completed"
       }
     });
 
   } catch (error) {
-    res.status(500).json({ message: error.message });
+
+    res.status(500).json({
+      message: error.message
+    });
   }
 };
+
 export const getRenewalList = async (req, res) => {
   try {
     const { libraryId } = req.user;
@@ -314,9 +387,10 @@ export const getRenewalList = async (req, res) => {
       if (!latest.endDate) return null;
 
       // 🔥 IMPORTANT FIX: use OLD expiry for filter
-      const expiryDate = previous
-        ? new Date(previous.endDate)
-        : new Date(latest.endDate);
+      const expiryDate =
+        previous
+          ? new Date(previous.endDate)
+          : new Date(latest.endDate);
 
       // 🔥 MONTH FILTER
       if (!(expiryDate >= startOfMonth && expiryDate <= endOfMonth)) return null;
@@ -332,7 +406,7 @@ export const getRenewalList = async (req, res) => {
       else if (isRenewed) status = "completed";
 
       return {
-        _id: latest._id,
+        _id: previous ? previous._id : latest._id,
         studentId: student._id,
         enrollmentNumber: student.enrollmentNumber,
         name: student.name,
