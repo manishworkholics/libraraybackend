@@ -2,6 +2,7 @@ import Student from "./student.model.js";
 import Counter from "../commonmodel/Counter.js";
 import Seat from "../seat/seat.model.js";
 import SeatBooking from "../commonmodel/seatBooking.model.js";
+import Library from "../commonmodel/Library.model.js";
 import bcrypt from "bcryptjs";
 
 /* Create Student */
@@ -82,7 +83,19 @@ export const createStudent = async (req, res) => {
       { new: true, upsert: true }
     );
 
-    const enrollmentNumber = `ADH-${counter.seq}`;
+    const library =
+      await Library.findById(
+        libraryId
+      );
+
+    const prefix =
+      library.name
+        .replace(/\s+/g, "")
+        .substring(0, 3)
+        .toUpperCase();
+
+    const enrollmentNumber =
+      `${prefix}-${counter.seq}`;
 
     /* 🔐 Default Password */
     const studentPassword = password || phone.slice(-6);
@@ -95,12 +108,6 @@ export const createStudent = async (req, res) => {
 
     const passportPhoto =
       req.files?.passportPhoto?.[0]?.path || req.body.passportPhoto;
-
-    if (!documentPhoto || !passportPhoto) {
-      return res.status(400).json({
-        message: "Document photo and passport photo are required"
-      });
-    }
 
     /* 🧑‍🎓 Create Student */
     const student = await Student.create({
