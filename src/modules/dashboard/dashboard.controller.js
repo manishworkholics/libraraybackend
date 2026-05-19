@@ -454,7 +454,7 @@ export const getGraphData = async (req, res) => {
         const fees = await Fees.find({
           libraryId,
 
-          startDate: {
+          paymentDate: {
             $gte: item.start,
             $lte: item.end
           }

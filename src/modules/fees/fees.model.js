@@ -28,9 +28,22 @@ const feesSchema = new mongoose.Schema(
       ],
       required: true
     },
-    hours: {
-      type: Number,
-      required: true
+    studyHours: {
+      type: String,
+      required: true,
+      enum: [
+        "3 Hours",
+        "4 Hours",
+        "5 Hours",
+        "6 Hours",
+        "7 Hours",
+        "8 Hours",
+        "9 Hours",
+        "10 Hours",
+        "11 Hours",
+        "12 Hours",
+        "Full Day"
+      ]
     },
     paymentDate: {
       type: Date,
@@ -50,13 +63,17 @@ const feesSchema = new mongoose.Schema(
     endDate: {
       type: Date
     },
+    dueAmount: {
+      type: Number,
+      default: 0
+    },
 
     receiptNumber: String
   },
   { timestamps: true }
 );
 
-feesSchema.pre("save", function (next) { 
+feesSchema.pre("save", function (next) {
   const start = new Date(this.startDate);
   const end = new Date(start);
 

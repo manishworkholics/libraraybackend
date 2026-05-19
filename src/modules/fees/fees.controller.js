@@ -2,37 +2,48 @@ import Fees from "./fees.model.js";
 
 /* Add Fees Entry */
 export const addFees = async (req, res) => {
+
   try {
+
     const {
       studentId,
       amountPaid,
+      dueAmount,
       planType,
       paymentDate,
       paymentMode,
       hours,
-      startDate
+      startDate,
+      endDate
     } = req.body;
-
-    // ✅ validation
+    console.log("BODY:", req.body);
+    // ✅ VALIDATION
     if (!studentId || !planType || !hours) {
       return res.status(400).json({
-        message: "Student, plan type and hours are required"
+        message:
+          "Student, plan type and hours are required"
       });
     }
 
-    // 🔥 FIX: ISO DATE SAFE PARSE
+    // ✅ START DATE
     let start;
 
     if (startDate) {
-      start = new Date(startDate); // ✅ direct parse
+
+      // 🔥 TIMEZONE SAFE
+      start = new Date(
+        `${startDate}T00:00:00`
+      );
+
     } else {
+
       start = new Date();
+
     }
 
-    // normalize time (important)
     start.setHours(0, 0, 0, 0);
 
-    // ✅ plan duration map
+    // ✅ PLAN DURATION MAP
     const durationMap = {
       monthly: 1,
       threeMonths: 3,
@@ -40,55 +51,136 @@ export const addFees = async (req, res) => {
       yearly: 12
     };
 
-    const months = durationMap[planType];
+    let finalEndDate;
 
-    if (!months) {
-      return res.status(400).json({
-        message: "Invalid plan type"
-      });
+    // 🔥 CUSTOM PLAN
+    if (planType === "custom") {
+
+      if (!endDate) {
+        return res.status(400).json({
+          message:
+            "End date is required for custom plan"
+        });
+      }
+
+      // 🔥 TIMEZONE SAFE
+      finalEndDate = new Date(endDate);
+
+      finalEndDate.setDate(
+        finalEndDate.getDate() + 1
+      );
+
     }
 
-    // 🔥 END DATE CALCULATION
-    const end = new Date(start);
-    end.setMonth(end.getMonth() + months);
+    // 🔥 NORMAL PLANS
+    else {
 
-    // edge case fix (31st issues)
-    if (end.getDate() !== start.getDate()) {
-      end.setDate(0);
+      const months =
+        durationMap[planType];
+
+      if (!months) {
+        return res.status(400).json({
+          message:
+            "Invalid plan type"
+        });
+      }
+
+      finalEndDate =
+        new Date(start);
+
+      finalEndDate.setMonth(
+        finalEndDate.getMonth() + months
+      );
+
+      // 🔥 31st EDGE CASE FIX
+      if (
+        finalEndDate.getDate() !==
+        start.getDate()
+      ) {
+        finalEndDate.setDate(0);
+      }
+
     }
 
-    // 🔥 FIX: PAYMENT DATE LOGIC
+    finalEndDate.setHours(
+      0,
+      0,
+      0,
+      0
+    );
+
+    // ✅ PAYMENT DATE
     let payment;
 
     if (paymentDate) {
-      payment = new Date(paymentDate);
+
+      // 🔥 TIMEZONE SAFE
+      payment = new Date(
+        `${paymentDate}T00:00:00`
+      );
+
     } else {
-      payment = start; // ✅ IMPORTANT (old entry fix)
+
+      payment = new Date(start);
+
     }
 
-    payment.setHours(0, 0, 0, 0);
+    payment.setHours(
+      0,
+      0,
+      0,
+      0
+    );
 
-    // ✅ create record
-    const record = await Fees.create({
-      studentId,
-      amountPaid,
-      planType,
-      paymentDate: payment,
-      paymentMode,
-      hours,
-      libraryId: req.user.libraryId,
-      startDate: start,
-      endDate: end
-    });
+    // ✅ CREATE FEES RECORD
+    const record =
+      await Fees.create({
+
+        studentId,
+
+        amountPaid:
+          Number(amountPaid || 0),
+
+        dueAmount:
+          Number(dueAmount || 0),
+
+        planType,
+
+        paymentDate: payment,
+
+        paymentMode,
+
+        hours:
+          Number(hours || 0),
+
+        libraryId:
+          req.user.libraryId,
+
+        startDate: start,
+
+        endDate: finalEndDate
+
+      });
 
     res.status(201).json({
-      message: "Fees added successfully",
+      message:
+        "Fees added successfully",
+
       record
     });
 
   } catch (error) {
-    console.error("ERROR:", error);
-    res.status(500).json({ message: error.message });
+
+    console.error(
+      "ERROR:",
+      error
+    );
+
+    res.status(500).json({
+      message:
+        error.message
+    });
+
   }
 };
 /* Student Fees History */
@@ -144,43 +236,79 @@ export const getFees = async (req, res) => {
 
 export const getRevenueStats = async (req, res) => {
   try {
-    const fees = await Fees.find();
 
+    const fees = await Fees.find({
+      libraryId: req.user.libraryId
+    });
+
+    // ✅ TOTAL REVENUE
     const totalRevenue = fees.reduce(
-      (sum, f) => sum + Number(f.amountPaid || 0),
+      (sum, f) =>
+        sum + Number(f.amountPaid || 0),
       0
     );
 
-    // 🔥 FIX START
+    // ✅ TODAY REVENUE
     const today = new Date();
+
     today.setHours(0, 0, 0, 0);
 
     const tomorrow = new Date(today);
-    tomorrow.setDate(today.getDate() + 1);
+
+    tomorrow.setDate(
+      today.getDate() + 1
+    );
 
     const todayRevenue = fees
-      .filter(f => {
-        if (!f.paymentDate) return false;
+      .filter((f) => {
 
-        const payment = new Date(f.paymentDate);
+        if (!f.paymentDate)
+          return false;
 
-        return payment >= today && payment < tomorrow;
+        const payment =
+          new Date(f.paymentDate);
+
+        return (
+          payment >= today &&
+          payment < tomorrow
+        );
+
       })
-      .reduce((sum, f) => sum + Number(f.amountPaid || 0), 0);
-    // 🔥 FIX END
 
+      .reduce(
+        (sum, f) =>
+          sum + Number(f.amountPaid || 0),
+        0
+      );
+
+    // ✅ PENDING REVENUE
+    const pendingRevenue = fees.reduce(
+      (sum, f) =>
+        sum + Number(f.dueAmount || 0),
+      0
+    );
+
+    // ✅ ACTIVE PLANS
     const activePlans = fees.length;
 
     res.json({
       totalRevenue,
       todayRevenue,
-      activePlans,
-      pendingRevenue: 0
+      pendingRevenue,
+      activePlans
     });
 
   } catch (error) {
-    console.error("🔥 STATS ERROR:", error);
-    res.status(500).json({ message: error.message });
+
+    console.error(
+      "🔥 STATS ERROR:",
+      error
+    );
+
+    res.status(500).json({
+      message: error.message
+    });
+
   }
 };
 
@@ -344,22 +472,46 @@ export const renewFees = async (req, res) => {
 
 export const getRenewalList = async (req, res) => {
   try {
+
     const { libraryId } = req.user;
     const { month, year } = req.query;
 
     const today = new Date();
 
-    const selectedMonth = month ? Number(month) : today.getMonth() + 1;
-    const selectedYear = year ? Number(year) : today.getFullYear();
+    const selectedMonth = month
+      ? Number(month)
+      : today.getMonth() + 1;
 
-    const startOfMonth = new Date(selectedYear, selectedMonth - 1, 1);
-    const endOfMonth = new Date(selectedYear, selectedMonth, 0);
+    const selectedYear = year
+      ? Number(year)
+      : today.getFullYear();
 
-    const fees = await Fees.find({ libraryId })
+    const startOfMonth = new Date(
+      selectedYear,
+      selectedMonth - 1,
+      1
+    );
+
+    const endOfMonth = new Date(
+      selectedYear,
+      selectedMonth,
+      0,
+      23,
+      59,
+      59,
+      999
+    );
+
+    const fees = await Fees.find({
+      libraryId
+    })
       .populate({
         path: "studentId",
-        match: { status: "active" },
-        select: "enrollmentNumber name phone studyHours status"
+        match: {
+          status: "active"
+        },
+        select:
+          "enrollmentNumber name phone studyHours status"
       })
       .sort({ createdAt: -1 });
 
@@ -367,62 +519,143 @@ export const getRenewalList = async (req, res) => {
     const grouped = {};
 
     fees.forEach(item => {
+
       if (!item.studentId) return;
 
-      const id = item.studentId._id.toString();
+      const id =
+        item.studentId._id.toString();
 
-      if (!grouped[id]) grouped[id] = [];
+      if (!grouped[id])
+        grouped[id] = [];
+
       grouped[id].push(item);
     });
 
-    // 🔥 PROCESS EACH STUDENT
-    const result = Object.values(grouped).map(records => {
+    // 🔥 FINAL LOGIC
+    const result =
+      Object.values(grouped)
+        .flatMap(records => {
 
-      // latest first
-      records.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+          // latest first
+          records.sort(
+            (a, b) =>
+              new Date(b.createdAt) -
+              new Date(a.createdAt)
+          );
 
-      const latest = records[0];      // current plan
-      const previous = records[1];    // previous plan
+          const latest =
+            records[0];
 
-      if (!latest.endDate) return null;
+          const previous =
+            records[1];
 
-      // 🔥 IMPORTANT FIX: use OLD expiry for filter
-      const expiryDate =
-        previous
-          ? new Date(previous.endDate)
-          : new Date(latest.endDate);
+          const student =
+            latest.studentId;
 
-      // 🔥 MONTH FILTER
-      if (!(expiryDate >= startOfMonth && expiryDate <= endOfMonth)) return null;
+          const rows = [];
 
-      const student = latest.studentId;
+          // 🔥 OLD EXPIRY
+          const expiryDate =
+            previous
+              ? new Date(
+                previous.endDate
+              )
+              : new Date(
+                latest.endDate
+              );
 
-      const isExpired = expiryDate < today;
-      const isRenewed = !!previous;
+          // ✅ CURRENT MONTH COMPLETED
+          if (
+            previous &&
+            expiryDate >= startOfMonth &&
+            expiryDate <= endOfMonth
+          ) {
 
-      let status = "warning";
+            rows.push({
 
-      if (isExpired && !isRenewed) status = "pending";
-      else if (isRenewed) status = "completed";
+              _id:
+                previous._id,
 
-      return {
-        _id: previous ? previous._id : latest._id,
-        studentId: student._id,
-        enrollmentNumber: student.enrollmentNumber,
-        name: student.name,
-        phone: student.phone,
+              studentId:
+                student._id,
 
-        studyHours: latest.hours,
+              enrollmentNumber:
+                student.enrollmentNumber,
 
-        // 🔥 FIXED FIELDS
-        lastRenewalDate: expiryDate,       // OLD expiry (May)
-        renewDate: latest.paymentDate,     // when renewed
-        nextRenewDate: latest.endDate,     // new expiry
+              name:
+                student.name,
 
-        status,
-        canRenew: !isRenewed
-      };
-    }).filter(Boolean);
+              phone:
+                student.phone,
+
+              studyHours:
+                latest.hours,
+
+              lastRenewalDate:
+                expiryDate,
+
+              renewDate:
+                latest.paymentDate,
+
+              nextRenewDate:
+                latest.endDate,
+
+              status:
+                "completed",
+
+              canRenew:
+                false
+            });
+          }
+
+          // ✅ NEXT MONTH WARNING/PENDING
+          if (
+            latest.endDate &&
+            new Date(latest.endDate) >= startOfMonth &&
+            new Date(latest.endDate) <= endOfMonth
+          ) {
+
+            rows.push({
+
+              _id:
+                latest._id,
+
+              studentId:
+                student._id,
+
+              enrollmentNumber:
+                student.enrollmentNumber,
+
+              name:
+                student.name,
+
+              phone:
+                student.phone,
+
+              studyHours:
+                latest.hours,
+
+              lastRenewalDate:
+                latest.endDate,
+
+              renewDate:
+                latest.paymentDate,
+
+              nextRenewDate:
+                latest.endDate,
+
+              status:
+                new Date(latest.endDate) < today
+                  ? "pending"
+                  : "warning",
+
+              canRenew:
+                true
+            });
+          }
+
+          return rows;
+        });
 
     res.json({
       success: true,
@@ -431,6 +664,9 @@ export const getRenewalList = async (req, res) => {
     });
 
   } catch (error) {
-    res.status(500).json({ message: error.message });
+
+    res.status(500).json({
+      message: error.message
+    });
   }
 };
