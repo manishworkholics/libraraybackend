@@ -7,6 +7,7 @@ import bcrypt from "bcryptjs";
 
 /* Create Student */
 export const createStudent = async (req, res) => {
+
   try {
 
     const {
@@ -28,7 +29,7 @@ export const createStudent = async (req, res) => {
 
     const { libraryId } = req.user;
 
-    /* 🔎 Required Fields */
+    // ✅ REQUIRED FIELDS
     if (
       !name ||
       !phone ||
@@ -38,13 +39,16 @@ export const createStudent = async (req, res) => {
       !studyHours ||
       !documentNumber
     ) {
+
       return res.status(400).json({
-        message: "Please fill all required fields"
+        success: false,
+        message:
+          "Please fill all required fields"
       });
+
     }
 
-    /* 🔢 Validate study hours */
-    /* 🔢 Validate study hours */
+    // ✅ VALID STUDY HOURS
     const validStudyHours = [
       "3 Hours",
       "4 Hours",
@@ -59,119 +63,249 @@ export const createStudent = async (req, res) => {
       "Full Day"
     ];
 
-    if (!validStudyHours.includes(studyHours)) {
+    if (
+      !validStudyHours.includes(
+        String(studyHours)
+      )
+    ) {
+
       return res.status(400).json({
-        message: "Invalid study hours selected"
+        success: false,
+        message:
+          "Invalid study hours selected"
       });
+
     }
 
-    /* 📧 Email Duplicate Check (Library Wise) */
+    // ✅ EMAIL CHECK
     if (email) {
-      const existingEmail = await Student.findOne({
-        email: email.toLowerCase(),
-        libraryId
-      });
+
+      const existingEmail =
+        await Student.findOne({
+
+          email:
+            email.toLowerCase(),
+
+          libraryId
+
+        });
 
       if (existingEmail) {
+
         return res.status(400).json({
-          message: "Student with this email already exists"
+          success: false,
+          message:
+            "Student with this email already exists"
         });
+
       }
+
     }
 
-    /* 📱 Phone Duplicate Check */
-    const existingPhone = await Student.findOne({
-      phone,
-      libraryId
-    });
+    // ✅ PHONE CHECK
+    const existingPhone =
+      await Student.findOne({
+
+        phone,
+        libraryId
+
+      });
 
     if (existingPhone) {
+
       return res.status(400).json({
-        message: "Student with this phone already exists"
+        success: false,
+        message:
+          "Student with this phone already exists"
       });
+
     }
 
-    /* 🔥 Atomic Enrollment Number */
-    const counter = await Counter.findOneAndUpdate(
-      { libraryId },
-      { $inc: { seq: 1 } },
-      { new: true, upsert: true }
-    );
-
+    // ✅ LIBRARY
     const library =
       await Library.findById(
         libraryId
       );
 
+    if (!library) {
+
+      return res.status(404).json({
+        success: false,
+        message:
+          "Library not found"
+      });
+
+    }
+
+    // ✅ PREFIX
     const prefix =
       library.name
         .replace(/\s+/g, "")
         .substring(0, 3)
         .toUpperCase();
 
+    // ✅ FIND LAST STUDENT
+    const lastStudent =
+      await Student.findOne({
+        libraryId
+      })
+        .sort({
+          createdAt: -1
+        });
+
+    let nextNumber = 1;
+
+    if (
+      lastStudent?.enrollmentNumber
+    ) {
+
+      const lastNumber =
+        parseInt(
+          lastStudent
+            .enrollmentNumber
+            .split("-")[1]
+        );
+
+      nextNumber =
+        lastNumber + 1;
+
+    }
+
+    // ✅ ENROLLMENT NUMBER
     const enrollmentNumber =
-      `${prefix}-${counter.seq}`;
+      `${prefix}-${nextNumber}`;
 
-    /* 🔐 Default Password */
-    const studentPassword = password || phone.slice(-6);
+    // ✅ PASSWORD
+    const studentPassword =
+      password ||
+      phone.slice(-6);
 
-    const hashedPassword = await bcrypt.hash(studentPassword, 10);
+    const hashedPassword =
+      await bcrypt.hash(
+        studentPassword,
+        10
+      );
 
-    /* 📸 File Handling */
+    // ✅ FILES
     const documentPhoto =
-      req.files?.documentPhoto?.[0]?.path || req.body.documentPhoto;
+      req.files?.documentPhoto?.[0]?.path ||
+      req.body.documentPhoto ||
+      "";
 
     const passportPhoto =
-      req.files?.passportPhoto?.[0]?.path || req.body.passportPhoto;
+      req.files?.passportPhoto?.[0]?.path ||
+      req.body.passportPhoto ||
+      "";
 
-    /* 🧑‍🎓 Create Student */
-    const student = await Student.create({
-      name,
-      fathername: fathername || fatherName,
-      dob,
-      gender,
-      email: email?.toLowerCase(),
-      phone,
-      address,
-      timeSlot,
-      course,
-      studyHours: String(studyHours),
-      documentNumber,
-      referralCode,
-      documentPhoto,
-      passportPhoto,
-      enrollmentNumber,
-      password: hashedPassword,
-      libraryId
-    });
+    // ✅ CREATE STUDENT
+    const student =
+      await Student.create({
 
-    /* 🔒 Hide Password */
-    const studentResponse = student.toObject();
+        name:
+          name.trim(),
+
+        fathername:
+          fathername ||
+          fatherName ||
+          "",
+
+        dob,
+
+        gender,
+
+        email:
+          email
+            ? email.toLowerCase()
+            : "",
+
+        phone,
+
+        address,
+
+        timeSlot,
+
+        course,
+
+        studyHours:
+          String(studyHours),
+
+        documentNumber,
+
+        referralCode,
+
+        documentPhoto,
+
+        passportPhoto,
+
+        enrollmentNumber,
+
+        password:
+          hashedPassword,
+
+        libraryId
+
+      });
+
+    // ✅ REMOVE PASSWORD
+    const studentResponse =
+      student.toObject();
+
     delete studentResponse.password;
 
     res.status(201).json({
-      message: "Student created successfully",
-      student: studentResponse,
-      defaultPassword: studentPassword
+
+      success: true,
+
+      message:
+        "Student created successfully",
+
+      student:
+        studentResponse,
+
+      defaultPassword:
+        studentPassword
+
     });
 
   } catch (error) {
 
-    /* 🔥 Duplicate Key Error */
+    console.error(
+      "CREATE STUDENT ERROR:",
+      error
+    );
+
+    // ✅ DUPLICATE KEY
     if (error.code === 11000) {
 
-      const field = Object.keys(error.keyValue)[0];
+      const field =
+        Object.keys(
+          error.keyValue
+        )[0];
 
       return res.status(400).json({
-        message: `${field} already exists`,
+
+        success: false,
+
+        message:
+          `${field} already exists`,
+
         field
+
       });
+
     }
 
     res.status(500).json({
-      message: error.message
+
+      success: false,
+
+      message:
+        error.message
+
     });
+
   }
+
 };
 
 /* Get All Students (Library Only) */
@@ -251,22 +385,117 @@ export const updateStudent = async (req, res) => {
 
 /* Delete Student */
 export const deleteStudent = async (req, res) => {
-  try {
-    const { libraryId } = req.user;
 
-    const student = await Student.findOneAndDelete({
-      _id: req.params.id,
-      libraryId
+  try {
+
+    const { libraryId } =
+      req.user;
+
+    // ✅ FIND STUDENT FIRST
+    const student =
+      await Student.findOne({
+
+        _id:
+          req.params.id,
+
+        libraryId
+
+      });
+
+    if (!student) {
+
+      return res.status(404).json({
+
+        success: false,
+
+        message:
+          "Student not found"
+
+      });
+
+    }
+
+    // ✅ DELETE STUDENT
+    await Student.findByIdAndDelete(
+      student._id
+    );
+
+    // ✅ GET LAST STUDENT
+    const lastStudent =
+      await Student.findOne({
+        libraryId
+      })
+        .sort({
+          createdAt: -1
+        });
+
+    // ✅ IF NO STUDENTS LEFT
+    if (!lastStudent) {
+
+      return res.json({
+
+        success: true,
+
+        message:
+          "Student deleted successfully"
+
+      });
+
+    }
+
+    // ✅ DELETED NUMBER
+    const deletedNumber =
+      parseInt(
+        student.enrollmentNumber
+          ?.split("-")[1]
+      );
+
+    // ✅ LAST NUMBER
+    const lastNumber =
+      parseInt(
+        lastStudent.enrollmentNumber
+          ?.split("-")[1]
+      );
+
+    // ✅ ONLY RESET IF LAST STUDENT DELETED
+    if (
+      deletedNumber ===
+      lastNumber + 1
+    ) {
+
+      console.log(
+        "Last enrollment deleted"
+      );
+
+    }
+
+    res.json({
+
+      success: true,
+
+      message:
+        "Student deleted successfully"
+
     });
 
-    if (!student)
-      return res.status(404).json({ message: "Student not found" });
-
-    res.json({ message: "Student deleted successfully" });
-
   } catch (error) {
-    res.status(500).json({ message: error.message });
+
+    console.error(
+      "DELETE STUDENT ERROR:",
+      error
+    );
+
+    res.status(500).json({
+
+      success: false,
+
+      message:
+        error.message
+
+    });
+
   }
+
 };
 
 export const getStudentProfile = async (req, res) => {
