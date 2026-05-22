@@ -10,129 +10,58 @@ export const addFees = async (req, res) => {
       amountPaid,
       dueAmount,
       planType,
-      paymentDate,
       paymentMode,
-      hours,
+      studyHours,
       startDate,
       endDate
     } = req.body;
-    console.log("BODY:", req.body);
-    // ✅ VALIDATION
-    if (!studentId || !planType || !hours) {
+
+    if (!studentId || !planType || !studyHours) {
+
       return res.status(400).json({
+        success: false,
         message:
-          "Student, plan type and hours are required"
+          "Student, plan type and study hours are required"
       });
-    }
-
-    // ✅ START DATE
-    let start;
-
-    if (startDate) {
-
-      // 🔥 TIMEZONE SAFE
-      start = new Date(
-        `${startDate}T00:00:00`
-      );
-
-    } else {
-
-      start = new Date();
 
     }
 
-    start.setHours(0, 0, 0, 0);
-
-    // ✅ PLAN DURATION MAP
+    // ✅ PLAN MONTHS
     const durationMap = {
       monthly: 1,
-      threeMonths: 3,
-      sixMonths: 6,
+      quarterly: 3,
+      halfYearly: 6,
       yearly: 12
     };
 
+    // ✅ START DATE
+    const start =
+      new Date(startDate);
+
     let finalEndDate;
 
-    // 🔥 CUSTOM PLAN
+    // ✅ CUSTOM PLAN
     if (planType === "custom") {
 
-      if (!endDate) {
-        return res.status(400).json({
-          message:
-            "End date is required for custom plan"
-        });
-      }
+      finalEndDate =
+        new Date(endDate);
 
-      // 🔥 TIMEZONE SAFE
-      finalEndDate = new Date(endDate);
-
-      finalEndDate.setDate(
-        finalEndDate.getDate() + 1
-      );
-
-    }
-
-    // 🔥 NORMAL PLANS
-    else {
+    } else {
 
       const months =
         durationMap[planType];
 
-      if (!months) {
-        return res.status(400).json({
-          message:
-            "Invalid plan type"
-        });
-      }
-
+      // ✅ CLONE DATE
       finalEndDate =
         new Date(start);
 
+      // ✅ ADD MONTHS
       finalEndDate.setMonth(
         finalEndDate.getMonth() + months
       );
 
-      // 🔥 31st EDGE CASE FIX
-      if (
-        finalEndDate.getDate() !==
-        start.getDate()
-      ) {
-        finalEndDate.setDate(0);
-      }
-
     }
 
-    finalEndDate.setHours(
-      0,
-      0,
-      0,
-      0
-    );
-
-    // ✅ PAYMENT DATE
-    let payment;
-
-    if (paymentDate) {
-
-      // 🔥 TIMEZONE SAFE
-      payment = new Date(
-        `${paymentDate}T00:00:00`
-      );
-
-    } else {
-
-      payment = new Date(start);
-
-    }
-
-    payment.setHours(
-      0,
-      0,
-      0,
-      0
-    );
-
-    // ✅ CREATE FEES RECORD
     const record =
       await Fees.create({
 
@@ -146,35 +75,99 @@ export const addFees = async (req, res) => {
 
         planType,
 
-        paymentDate: payment,
+        paymentDate:
+          new Date(),
 
         paymentMode,
 
-        hours:
-          Number(hours || 0),
+        studyHours:
+          String(studyHours || 0),
 
         libraryId:
           req.user.libraryId,
 
-        startDate: start,
+        startDate:
+          start,
 
-        endDate: finalEndDate
+        endDate:
+          finalEndDate
 
       });
 
     res.status(201).json({
-      message:
-        "Fees added successfully",
+
+      success: true,
 
       record
+
     });
 
   } catch (error) {
 
-    console.error(
-      "ERROR:",
-      error
+    console.error(error);
+
+    res.status(500).json({
+
+      success: false,
+
+      message:
+        error.message
+
+    });
+
+  }
+
+};
+/* Student Fees History */
+export const getStudentFees = async (req, res) => {
+
+  try {
+
+    const { studentId } = req.params;
+
+    const history =
+      await Fees.find({ studentId })
+
+        .populate(
+          "studentId",
+          "name phone"
+        )
+
+        .sort({
+          paymentDate: -1
+        });
+
+    // ✅ FORMAT DATES
+    const formattedHistory =
+      history.map((item) => ({
+
+        ...item._doc,
+
+        startDate:
+          item.startDate
+            ? String(item.startDate)
+              .split("T")[0]
+            : "",
+
+        endDate:
+          item.endDate
+            ? String(item.endDate)
+              .split("T")[0]
+            : "",
+
+        paymentDate:
+          item.paymentDate
+            ? String(item.paymentDate)
+              .split("T")[0]
+            : ""
+
+      }));
+
+    res.json(
+      formattedHistory
     );
+
+  } catch (error) {
 
     res.status(500).json({
       message:
@@ -182,55 +175,102 @@ export const addFees = async (req, res) => {
     });
 
   }
-};
-/* Student Fees History */
-export const getStudentFees = async (req, res) => {
-  try {
-    const { studentId } = req.params;
 
-    const history = await Fees.find({ studentId })
-      .populate("studentId", "name phone") // 🔥 important
-      .sort({ paymentDate: -1 });
-
-    res.json(history);
-  } catch (error) {
-    res.status(500).json({ message: error.message });
-  }
 };
 
 export const getFees = async (req, res) => {
   try {
+
     const { libraryId } = req.user;
+
     const { month, year } = req.query;
 
-    let filter = { libraryId };
+    let filter = {
+      libraryId
+    };
 
-    // 🔥 Apply month filter (timezone safe)
+    // ✅ MONTH FILTER
     if (month && year) {
-      const m = Number(month);
-      const y = Number(year);
 
-      const startOfMonth = new Date(Date.UTC(y, m - 1, 1));
-      const endOfMonth = new Date(Date.UTC(y, m, 1));
+      const monthString =
+        String(month).padStart(2, "0");
 
-      filter.startDate = {
+      // ✅ Proper date range filter
+      const startOfMonth =
+        new Date(`${year}-${monthString}-01`);
+
+      const endOfMonth =
+        new Date(
+          Number(year),
+          Number(monthString),
+          0,
+          23,
+          59,
+          59,
+          999
+        );
+
+      filter.createdAt = {
         $gte: startOfMonth,
-        $lt: endOfMonth
+        $lte: endOfMonth
       };
     }
 
     const fees = await Fees.find(filter)
+
       .populate("studentId")
-      .sort({ createdAt: -1 });
+
+      .sort({
+        createdAt: -1
+      });
+
+    // ✅ FORMAT DATES
+    const formattedFees = fees.map((fee) => ({
+
+      ...fee._doc,
+
+      startDate:
+        fee.startDate
+          ? new Date(fee.startDate)
+            .toISOString()
+            .split("T")[0]
+          : "",
+
+      endDate:
+        fee.endDate
+          ? new Date(fee.endDate)
+            .toISOString()
+            .split("T")[0]
+          : "",
+
+      paymentDate:
+        fee.paymentDate
+          ? new Date(fee.paymentDate)
+            .toISOString()
+            .split("T")[0]
+          : ""
+
+    }));
 
     res.json({
+
       success: true,
-      count: fees.length,
-      fees
+
+      count: formattedFees.length,
+
+      fees: formattedFees
+
     });
 
   } catch (err) {
-    res.status(500).json({ message: err.message });
+
+    console.log(err);
+
+    res.status(500).json({
+      success: false,
+      message: err.message
+    });
+
   }
 };
 
@@ -326,8 +366,8 @@ export const deleteFees = async (req, res) => {
 
 const planTypeByDuration = {
   1: "monthly",
-  3: "threeMonths",
-  6: "sixMonths",
+  3: "quarterly",
+  6: "halfYearly",
   12: "yearly"
 };
 

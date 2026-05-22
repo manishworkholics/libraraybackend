@@ -21,8 +21,8 @@ const feesSchema = new mongoose.Schema(
       type: String,
       enum: [
         "monthly",
-        "threeMonths",
-        "sixMonths",
+        "quarterly",
+        "halfYearly",
         "yearly",
         "custom"
       ],
@@ -81,10 +81,10 @@ feesSchema.pre("save", function (next) {
     case "monthly":
       end.setMonth(end.getMonth() + 1);
       break;
-    case "threeMonths":
+    case "quarterly":
       end.setMonth(end.getMonth() + 3);
       break;
-    case "sixMonths":
+    case "halfYearly":
       end.setMonth(end.getMonth() + 6);
       break;
     case "yearly":

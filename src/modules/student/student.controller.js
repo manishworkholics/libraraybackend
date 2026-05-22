@@ -44,9 +44,24 @@ export const createStudent = async (req, res) => {
     }
 
     /* 🔢 Validate study hours */
-    if (isNaN(studyHours)) {
+    /* 🔢 Validate study hours */
+    const validStudyHours = [
+      "3 Hours",
+      "4 Hours",
+      "5 Hours",
+      "6 Hours",
+      "7 Hours",
+      "8 Hours",
+      "9 Hours",
+      "10 Hours",
+      "11 Hours",
+      "12 Hours",
+      "Full Day"
+    ];
+
+    if (!validStudyHours.includes(studyHours)) {
       return res.status(400).json({
-        message: "Study hours must be a number"
+        message: "Invalid study hours selected"
       });
     }
 
@@ -120,7 +135,7 @@ export const createStudent = async (req, res) => {
       address,
       timeSlot,
       course,
-      studyHours: Number(studyHours),
+      studyHours: String(studyHours),
       documentNumber,
       referralCode,
       documentPhoto,
