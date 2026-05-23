@@ -1,6 +1,6 @@
 import express from "express";
 import adminAuth from "../../middlewares/adminAuth.middleware.js";
-import { addFees, getStudentFees, getFees, deleteFees,getRevenueStats,getRenewalList, renewFees} from "./fees.controller.js";
+import { addFees, getStudentFees, getFees, deleteFees,getRevenueStats,getRenewalList, renewFees,updateFees} from "./fees.controller.js";
 
 const router = express.Router();
 
@@ -11,4 +11,9 @@ router.put("/renew/:id", adminAuth, renewFees);
 router.get("/:studentId", adminAuth, getStudentFees);
 router.get("/",adminAuth, getFees);
 router.delete("/delete/:id", adminAuth, deleteFees);
+router.put(
+  "/update/:id",
+  adminAuth,
+  updateFees
+);
 export default router;

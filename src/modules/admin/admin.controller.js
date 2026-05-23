@@ -143,6 +143,39 @@ export const deleteExpense = async (req, res) => {
     res.status(500).json({ message: error.message });
   }
 };
+
+export const updateExpense = async (req, res) => {
+  try {
+
+    const updatedExpense = await Expense.findByIdAndUpdate(
+      req.params.id,
+      req.body,
+      { new: true }
+    );
+
+    if (!updatedExpense) {
+      return res.status(404).json({
+        success: false,
+        message: "Expense not found"
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "Expense updated successfully",
+      expense: updatedExpense
+    });
+
+  } catch (error) {
+
+    res.status(500).json({
+      success: false,
+      message: error.message
+    });
+
+  }
+};
+
 export const getAdminProfitDashboard = async (req, res) => {
   try {
 

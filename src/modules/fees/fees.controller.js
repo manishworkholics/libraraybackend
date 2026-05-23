@@ -352,6 +352,113 @@ export const getRevenueStats = async (req, res) => {
   }
 };
 
+export const updateFees =
+  async (req, res) => {
+
+    try {
+
+      const {
+        libraryId
+      } = req.user;
+
+      const {
+        id
+      } = req.params;
+
+      const {
+
+        amountPaid,
+        dueAmount,
+        studyHours,
+        paymentMode,
+        planType,
+        startDate,
+        endDate
+
+      } = req.body;
+
+      // ✅ FIND FEES
+      const fees =
+        await Fees.findOne({
+
+          _id: id,
+
+          libraryId
+
+        });
+
+      if (!fees) {
+
+        return res.status(404).json({
+
+          success: false,
+
+          message:
+            "Fees record not found"
+
+        });
+
+      }
+
+      // ✅ UPDATE
+      fees.amountPaid =
+        Number(amountPaid || 0);
+
+      fees.dueAmount =
+        Number(dueAmount || 0);
+
+      fees.studyHours =
+        String(studyHours || "");
+
+      fees.paymentMode =
+        paymentMode;
+
+      fees.planType =
+        planType;
+
+      fees.startDate =
+        startDate;
+
+      // ✅ CUSTOM PLAN
+      if (
+        planType === "custom"
+      ) {
+
+        fees.endDate =
+          endDate;
+
+      }
+
+      await fees.save();
+
+      res.json({
+
+        success: true,
+
+        message:
+          "Revenue updated successfully",
+
+        fees
+
+      });
+
+    } catch (error) {
+
+      console.error(error);
+
+      res.status(500).json({
+
+        success: false,
+
+        message:
+          error.message
+
+      });
+
+    }
+
+  };
+
 export const deleteFees = async (req, res) => {
   try {
     const { id } = req.params;
@@ -473,8 +580,9 @@ export const renewFees = async (req, res) => {
         startDate:
           renewalStartDate,
 
-        hours:
-          currentFees.hours
+        studyHours:
+          currentFees.studyHours,
+
       });
 
     res.json({
