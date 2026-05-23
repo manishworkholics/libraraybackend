@@ -55,7 +55,10 @@ export const getDashboardStats = async (req, res) => {
     // 🔥 Today's Revenue
     const todayFeesRecords = await Fees.find({
       libraryId,
-      paymentDate: today
+      paymentDate: {
+        $gte: startOfDay,
+        $lte: endOfDay
+      }
     });
 
     const todayCollection = todayFeesRecords.reduce(

@@ -4,6 +4,7 @@ import {
     addExpense,
     getExpenses,
     deleteExpense,
+    updateExpense,
     getAdminProfitDashboard,
     getAdminMonthlyProfitGraph
 } from "./admin.controller.js";
@@ -16,6 +17,7 @@ router.post("/login", adminLogin);
 router.post("/expenses", adminAuth, addExpense);
 router.get("/expenses", adminAuth, getExpenses);
 router.delete("/expenses/:id", adminAuth, deleteExpense);
+router.put("/expenses/:id", adminAuth, updateExpense);
 
 router.get("/profit-dashboard", adminAuth, getAdminProfitDashboard);
 router.get("/profit-graph", adminAuth, getAdminMonthlyProfitGraph);
