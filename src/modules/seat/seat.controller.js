@@ -1,6 +1,6 @@
 import SeatBooking from "../commonmodel/seatBooking.model.js";
 import Seat from "./seat.model.js";
-
+import Student from "../student/student.model.js";
 
 
 export const createSeat = async (req, res) => {
@@ -47,9 +47,34 @@ export const createSeat = async (req, res) => {
 
 export const allotSeatToStudent = async (req, res) => {
   try {
-    const { seatId, studentId, shift = "fullDay" } = req.body;
+    const { seatId, studentId } = req.body;
     const { libraryId, role } = req.user;
 
+    const student = await Student.findById(studentId);
+
+    if (!student) {
+      return res.status(404).json({
+        message: "Student not found"
+      });
+    }
+
+    let shift = "fullDay";
+
+    const studyHours =
+      student.studyHours ||
+      student.planHours ||
+      12;
+
+    // 🔥 AUTO SHIFT
+    if (studyHours <= 4) {
+      shift = "morning";
+    }
+    else if (studyHours <= 8) {
+      shift = "evening";
+    }
+    else {
+      shift = "fullDay";
+    }
 
 
     // 1️⃣ Check seat belongs to this library
@@ -152,7 +177,7 @@ export const getSeatStatus = async (req, res) => {
       const bookings = await SeatBooking.find({
         seatId: seat._id,
         status: "active"
-      });
+      }).populate("studentId", "name studyHours")
 
       let status = "vacant";
 
@@ -170,7 +195,13 @@ export const getSeatStatus = async (req, res) => {
         seatId: seat._id,
         seatNumber: seat.seatNumber,
         floor: seat.floor,
-        status
+        status,
+
+        studentName:
+          bookings[0]?.studentId?.name || "",
+
+        studyHours:
+          bookings[0]?.studentId?.studyHours || ""
       });
     }
 
@@ -180,7 +211,6 @@ export const getSeatStatus = async (req, res) => {
     res.status(500).json({ message: error.message });
   }
 };
-
 
 export const bookSeat = async (req, res) => {
   try {
@@ -273,7 +303,6 @@ export const bookSeat = async (req, res) => {
   }
 };
 
-
 export const cancelSeatBooking = async (req, res) => {
   try {
     const { userId: studentId } = req.user;
@@ -300,7 +329,6 @@ export const cancelSeatBooking = async (req, res) => {
     res.status(500).json({ message: error.message });
   }
 };
-
 
 export const getMySeat = async (req, res) => {
   try {
@@ -331,7 +359,6 @@ export const getMySeat = async (req, res) => {
     res.status(500).json({ message: error.message });
   }
 };
-
 
 export const getSeatDashboardSummary = async (req, res) => {
   try {

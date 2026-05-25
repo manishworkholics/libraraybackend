@@ -38,20 +38,57 @@ export const createEnquiry = async (req, res) => {
 ========================================= */
 export const getAllEnquiries = async (req, res) => {
   try {
+
     const { libraryId } = req.user;
-    const { page = 1, limit = 10, search = "" } = req.query;
+
+    const {
+      page = 1,
+      limit = 10,
+      search = "",
+      date
+    } = req.query;
 
     const query = {
-      libraryId,
-      $or: [
-        { name: { $regex: search, $options: "i" } },
-        { contact: { $regex: search, $options: "i" } }
-      ]
+      libraryId
     };
+
+    // 🔍 SEARCH FILTER
+    if (search) {
+
+      query.$or = [
+        {
+          name: {
+            $regex: search,
+            $options: "i"
+          }
+        },
+        {
+          contact: {
+            $regex: search,
+            $options: "i"
+          }
+        }
+      ];
+    }
+
+    // 📅 DATE FILTER
+    if (date) {
+
+      const start = new Date(date);
+      start.setHours(0, 0, 0, 0);
+
+      const end = new Date(date);
+      end.setHours(23, 59, 59, 999);
+
+      query.createdAt = {
+        $gte: start,
+        $lte: end
+      };
+    }
 
     const enquiries = await Enquiry.find(query)
       .sort({ createdAt: -1 })
-      .skip((page - 1) * limit)
+      .skip((page - 1) * Number(limit))
       .limit(Number(limit));
 
     const total = await Enquiry.countDocuments(query);
@@ -64,7 +101,11 @@ export const getAllEnquiries = async (req, res) => {
     });
 
   } catch (error) {
-    res.status(500).json({ message: error.message });
+
+    res.status(500).json({
+      message: error.message
+    });
+
   }
 };
 
