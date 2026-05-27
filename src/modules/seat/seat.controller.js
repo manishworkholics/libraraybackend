@@ -66,8 +66,8 @@ export const allotSeatToStudent = async (req, res) => {
 
     // 🔥 FULL RESERVED VALIDATION
     if (
-      shift === "fullDay" &&
-      studyHours < 12
+      shift === "Full Day" &&
+      studyHours !== "Full Day"
     ) {
       return res.status(400).json({
         message:
@@ -138,7 +138,7 @@ export const allotSeatToStudent = async (req, res) => {
 
     const hasReserved =
       seatBookings.find(
-        b => b.shift === "fullDay"
+        b => b.shift === "Full Day"
       );
 
     const hasOccupied =
@@ -156,7 +156,7 @@ export const allotSeatToStudent = async (req, res) => {
 
     // 🔴 Cannot reserve occupied seat
     if (
-      shift === "fullDay" &&
+      shift === "Full Day" &&
       hasOccupied
     ) {
       return res.status(400).json({

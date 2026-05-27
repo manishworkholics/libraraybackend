@@ -1,7 +1,3 @@
-
-
-
-
 import mongoose from "mongoose";
 
 const seatBookingSchema = new mongoose.Schema(
@@ -27,13 +23,13 @@ const seatBookingSchema = new mongoose.Schema(
 
     shift: {
       type: String,
-      enum: ["morning", "evening", "fullDay"],
-      default: "fullDay"
+      enum: ["partial", "Full Day"],
+      default: "partial"
     },
 
     status: {
       type: String,
-      enum: ["active", "completed", "cancelled"],
+      enum: ["active", "expired", "cancelled"],
       default: "active"
     },
 
