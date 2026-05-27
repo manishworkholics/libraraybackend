@@ -403,13 +403,19 @@ export const getLast7DaysRevenue = async (req, res) => {
 };
 
 export const getGraphData = async (req, res) => {
+
   try {
 
-    const { libraryId } = req.user;
+    const { libraryId } =
+      req.user;
 
-    const { type, range } = req.query;
+    const {
+      type,
+      range
+    } = req.query;
 
-    const now = new Date();
+    const now =
+      new Date();
 
     let labels = [];
 
@@ -418,20 +424,48 @@ export const getGraphData = async (req, res) => {
 
       for (let i = 6; i >= 0; i--) {
 
-        const d = new Date();
+        const d =
+          new Date();
 
-        d.setDate(now.getDate() - i);
+        d.setDate(
+          now.getDate() - i
+        );
 
         labels.push({
-          label: d.toLocaleDateString("en-US", {
-            weekday: "short"
-          }),
 
-          start: new Date(d.setHours(0, 0, 0, 0)),
+          label:
+            d.toLocaleDateString(
+              "en-US",
+              {
+                weekday:
+                  "short"
+              }
+            ),
 
-          end: new Date(d.setHours(23, 59, 59, 999))
+          start:
+            new Date(
+              d.setHours(
+                0,
+                0,
+                0,
+                0
+              )
+            ),
+
+          end:
+            new Date(
+              d.setHours(
+                23,
+                59,
+                59,
+                999
+              )
+            )
+
         });
+
       }
+
     }
 
     // 🔥 30 DAYS
@@ -439,45 +473,104 @@ export const getGraphData = async (req, res) => {
 
       for (let i = 29; i >= 0; i--) {
 
-        const d = new Date();
+        const d =
+          new Date();
 
-        d.setDate(now.getDate() - i);
+        d.setDate(
+          now.getDate() - i
+        );
 
         labels.push({
-          label: d.getDate().toString(),
 
-          start: new Date(d.setHours(0, 0, 0, 0)),
+          label:
+            d.getDate().toString(),
 
-          end: new Date(d.setHours(23, 59, 59, 999))
+          start:
+            new Date(
+              d.setHours(
+                0,
+                0,
+                0,
+                0
+              )
+            ),
+
+          end:
+            new Date(
+              d.setHours(
+                23,
+                59,
+                59,
+                999
+              )
+            )
+
         });
+
       }
+
     }
 
     // 🔥 MONTHLY
     else if (range === "monthly") {
 
-      const daysInMonth = new Date(
-        now.getFullYear(),
-        now.getMonth() + 1,
-        0
-      ).getDate();
+      const daysInMonth =
+        new Date(
 
-      for (let i = 1; i <= daysInMonth; i++) {
-
-        const d = new Date(
           now.getFullYear(),
-          now.getMonth(),
-          i
-        );
+
+          now.getMonth() + 1,
+
+          0
+
+        ).getDate();
+
+      for (
+        let i = 1;
+        i <= daysInMonth;
+        i++
+      ) {
+
+        const d =
+          new Date(
+
+            now.getFullYear(),
+
+            now.getMonth(),
+
+            i
+
+          );
 
         labels.push({
-          label: i.toString(),
 
-          start: new Date(d.setHours(0, 0, 0, 0)),
+          label:
+            i.toString(),
 
-          end: new Date(d.setHours(23, 59, 59, 999))
+          start:
+            new Date(
+              d.setHours(
+                0,
+                0,
+                0,
+                0
+              )
+            ),
+
+          end:
+            new Date(
+              d.setHours(
+                23,
+                59,
+                59,
+                999
+              )
+            )
+
         });
+
       }
+
     }
 
     // 🔥 YEARLY
@@ -485,32 +578,52 @@ export const getGraphData = async (req, res) => {
 
       for (let i = 0; i < 12; i++) {
 
-        const start = new Date(
-          now.getFullYear(),
-          i,
-          1
-        );
+        const start =
+          new Date(
 
-        const end = new Date(
-          now.getFullYear(),
-          i + 1,
-          0,
-          23,
-          59,
-          59,
-          999
-        );
+            now.getFullYear(),
+
+            i,
+
+            1
+
+          );
+
+        const end =
+          new Date(
+
+            now.getFullYear(),
+
+            i + 1,
+
+            0,
+
+            23,
+            59,
+            59,
+            999
+
+          );
 
         labels.push({
-          label: start.toLocaleString("default", {
-            month: "short"
-          }),
+
+          label:
+            start.toLocaleString(
+              "default",
+              {
+                month:
+                  "short"
+              }
+            ),
 
           start,
 
           end
+
         });
+
       }
+
     }
 
     // 🔥 DEFAULT 7 DAYS
@@ -518,20 +631,48 @@ export const getGraphData = async (req, res) => {
 
       for (let i = 6; i >= 0; i--) {
 
-        const d = new Date();
+        const d =
+          new Date();
 
-        d.setDate(now.getDate() - i);
+        d.setDate(
+          now.getDate() - i
+        );
 
         labels.push({
-          label: d.toLocaleDateString("en-US", {
-            weekday: "short"
-          }),
 
-          start: new Date(d.setHours(0, 0, 0, 0)),
+          label:
+            d.toLocaleDateString(
+              "en-US",
+              {
+                weekday:
+                  "short"
+              }
+            ),
 
-          end: new Date(d.setHours(23, 59, 59, 999))
+          start:
+            new Date(
+              d.setHours(
+                0,
+                0,
+                0,
+                0
+              )
+            ),
+
+          end:
+            new Date(
+              d.setHours(
+                23,
+                59,
+                59,
+                999
+              )
+            )
+
         });
+
       }
+
     }
 
     let data = [];
@@ -541,20 +682,35 @@ export const getGraphData = async (req, res) => {
 
       for (const item of labels) {
 
-        const total = await Student.countDocuments({
-          libraryId,
+        const total =
+          await Student.countDocuments({
 
-          createdAt: {
-            $gte: item.start,
-            $lte: item.end
-          }
-        });
+            libraryId,
+
+            createdAt: {
+
+              $gte:
+                item.start,
+
+              $lte:
+                item.end
+
+            }
+
+          });
 
         data.push({
-          label: item.label,
-          value: total
+
+          label:
+            item.label,
+
+          value:
+            total
+
         });
+
       }
+
     }
 
     // 🔥 REVENUE GRAPH
@@ -562,25 +718,50 @@ export const getGraphData = async (req, res) => {
 
       for (const item of labels) {
 
-        const fees = await Fees.find({
-          libraryId,
+        const fees =
+          await Fees.find({
 
-          paymentDate: {
-            $gte: item.start,
-            $lte: item.end
-          }
-        });
+            libraryId,
 
-        const total = fees.reduce(
-          (sum, fee) => sum + Number(fee.amountPaid || 0),
-          0
-        );
+            paymentDate: {
+
+              $gte:
+                item.start,
+
+              $lte:
+                item.end
+
+            }
+
+          });
+
+        const total =
+          fees.reduce(
+
+            (sum, fee) =>
+
+              sum +
+
+              Number(
+                fee.totalAmount || 0
+              ),
+
+            0
+
+          );
 
         data.push({
-          label: item.label,
-          value: total
+
+          label:
+            item.label,
+
+          value:
+            total
+
         });
+
       }
+
     }
 
     // 🔥 ATTENDANCE GRAPH
@@ -588,45 +769,78 @@ export const getGraphData = async (req, res) => {
 
       for (const item of labels) {
 
-        const total = await Attendance.countDocuments({
-          libraryId,
+        const total =
+          await Attendance.countDocuments({
 
-          date: {
-            $gte: item.start,
-            $lte: item.end
-          }
-        });
+            libraryId,
+
+            date: {
+
+              $gte:
+                item.start,
+
+              $lte:
+                item.end
+
+            }
+
+          });
 
         data.push({
-          label: item.label,
-          value: total
+
+          label:
+            item.label,
+
+          value:
+            total
+
         });
+
       }
+
     }
 
     // 🔥 SEATS GRAPH
     else if (type === "seats") {
 
-      const totalSeats = await Seat.countDocuments({
-        libraryId
-      });
+      const totalSeats =
+        await Seat.countDocuments({
 
-      data = labels.map(item => ({
-        label: item.label,
-        value: totalSeats
-      }));
+          libraryId
+
+        });
+
+      data =
+        labels.map(item => ({
+
+          label:
+            item.label,
+
+          value:
+            totalSeats
+
+        }));
+
     }
 
     res.json(data);
 
   } catch (error) {
 
-    console.error("GRAPH ERROR:", error);
+    console.error(
+      "GRAPH ERROR:",
+      error
+    );
 
     res.status(500).json({
-      message: error.message
+
+      message:
+        error.message
+
     });
+
   }
+
 };
 
 export const getRecentActivities = async (req, res) => {

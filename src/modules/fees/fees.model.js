@@ -191,7 +191,8 @@ const feesSchema = new mongoose.Schema(
       type:
         String
 
-    }
+    },
+    
 
   },
 

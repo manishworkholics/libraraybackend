@@ -734,7 +734,7 @@ export const renewFees = async (req, res) => {
       renewType === "continue"
     ) {
 
-      // ✅ SAME DATE CONTINUE
+      // ✅ SAME EXPIRY DATE
       renewalStartDate =
         new Date(
           currentFees.endDate
@@ -748,7 +748,7 @@ export const renewFees = async (req, res) => {
 
     }
 
-    // ✅ CALCULATE RENEWAL AMOUNT
+    // ✅ CALCULATE AMOUNT
     const renewalAmount =
 
       Number(
@@ -845,6 +845,11 @@ export const getRenewalList = async (req, res) => {
     const { libraryId } =
       req.user;
 
+    const {
+      month,
+      year
+    } = req.query;
+
     // ✅ TODAY
     const today =
       new Date();
@@ -879,11 +884,11 @@ export const getRenewalList = async (req, res) => {
 
         .sort({
 
-          endDate: -1
+          createdAt: -1
 
         });
 
-    // ✅ REMOVE INVALID RECORDS
+    // ✅ VALID RECORDS
     const validFees =
       fees.filter(
 
@@ -895,35 +900,29 @@ export const getRenewalList = async (req, res) => {
 
       );
 
-    // ✅ LATEST RECORD ONLY
-    const latestFeesMap = {};
-
-    validFees.forEach((f) => {
-
-      const studentId =
-        f.studentId._id.toString();
-
-      if (
-
-        !latestFeesMap[studentId] ||
-
-        new Date(f.endDate) >
-
-        new Date(
-          latestFeesMap[studentId].endDate
-        )
-
-      ) {
-
-        latestFeesMap[studentId] = f;
-
-      }
-
-    });
-
     // ✅ FINAL RESULT
     const result =
-      Object.values(latestFeesMap)
+      validFees
+
+        // ✅ FILTER BY END DATE
+        .filter((f) => {
+
+          const endDate =
+            new Date(f.endDate);
+
+          return (
+
+            endDate.getMonth() + 1 ===
+            Number(month)
+
+            &&
+
+            endDate.getFullYear() ===
+            Number(year)
+
+          );
+
+        })
 
         .map((f) => {
 
@@ -950,19 +949,43 @@ export const getRenewalList = async (req, res) => {
 
             );
 
+          // ✅ CHECK IF RENEWED
+          const newerRecord =
+            validFees.find(
+
+              (item) =>
+
+                item.studentId?._id.toString() ===
+                f.studentId._id.toString()
+
+                &&
+
+                new Date(item.createdAt) >
+                new Date(f.createdAt)
+
+            );
+
           // ✅ STATUS
           let status =
             "completed";
 
+          // ✅ ALREADY RENEWED
+          if (newerRecord) {
+
+            status =
+              "completed";
+
+          }
+
           // ❌ EXPIRED
-          if (diffDays < 0) {
+          else if (diffDays < 0) {
 
             status =
               "pending";
 
           }
 
-          // ⚠ 3 DAYS LEFT
+          // ⚠ EXPIRING SOON
           else if (
             diffDays <= 3
           ) {
@@ -972,17 +995,11 @@ export const getRenewalList = async (req, res) => {
 
           }
 
-          // ✅ RENEWED
-          if (
-
-            f.paymentDate &&
-
-            diffDays > 3
-
-          ) {
+          // ✅ UPCOMING
+          else {
 
             status =
-              "completed";
+              "warning";
 
           }
 
@@ -1012,23 +1029,34 @@ export const getRenewalList = async (req, res) => {
             totalAmount:
               f.totalAmount || 0,
 
+            // ✅ OLD EXPIRY
             lastRenewalDate:
-              f.startDate,
+              f.endDate,
 
+            // ✅ PAYMENT DATE
             renewDate:
               f.paymentDate,
 
+            // ✅ NEXT RENEWAL
             nextRenewDate:
-              f.endDate,
+
+              newerRecord
+
+                ? newerRecord.endDate
+
+                : f.endDate,
 
             status,
 
-            // ✅ RENEW BUTTON ONLY
             canRenew:
 
-              status === "warning" ||
+              !newerRecord && (
 
-              status === "pending"
+                status === "warning" ||
+
+                status === "pending"
+
+              )
 
           };
 
