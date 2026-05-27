@@ -90,89 +90,146 @@ export const getDashboardStats = async (req, res) => {
 };
 
 export const getAdminDashboard = async (req, res) => {
+
   try {
 
-    const { libraryId } = req.user;
+    const { libraryId } =
+      req.user;
 
-    // 🔥 Local Date Range
-    const now = new Date();
+    // ✅ TODAY RANGE
+    const now =
+      new Date();
 
-    const startOfDay = new Date(
-      now.getFullYear(),
-      now.getMonth(),
-      now.getDate(),
-      0,
-      0,
-      0,
-      0
-    );
+    const startOfDay =
+      new Date(
 
-    const endOfDay = new Date(
-      now.getFullYear(),
-      now.getMonth(),
-      now.getDate(),
-      23,
-      59,
-      59,
-      999
-    );
+        now.getFullYear(),
 
-    // 🔥 YYYY-MM-DD for paymentDate
-    const today = now.toISOString().split("T")[0];
+        now.getMonth(),
 
-    // 1️⃣ Total Active Students
-    const totalStudents = await Student.countDocuments({
-      libraryId,
-      status: "active"
-    });
+        now.getDate(),
 
-    // 2️⃣ Total Seats
-    const totalSeats = await Seat.countDocuments({
-      libraryId
-    });
+        0,
+        0,
+        0,
+        0
 
-    // 3️⃣ Occupied Seats
-    const occupiedSeats = await SeatBooking.distinct(
-      "seatId",
-      {
+      );
+
+    const endOfDay =
+      new Date(
+
+        now.getFullYear(),
+
+        now.getMonth(),
+
+        now.getDate(),
+
+        23,
+        59,
+        59,
+        999
+
+      );
+
+    // 1️⃣ TOTAL ACTIVE STUDENTS
+    const totalStudents =
+      await Student.countDocuments({
+
         libraryId,
-        status: "active"
-      }
-    );
 
-    const occupiedCount = occupiedSeats.length;
+        status:
+          "active"
 
-    // 4️⃣ Available Seats
+      });
+
+    // 2️⃣ TOTAL SEATS
+    const totalSeats =
+      await Seat.countDocuments({
+
+        libraryId
+
+      });
+
+    // 3️⃣ OCCUPIED SEATS
+    const occupiedSeats =
+      await SeatBooking.distinct(
+
+        "seatId",
+
+        {
+
+          libraryId,
+
+          status:
+            "active"
+
+        }
+
+      );
+
+    const occupiedCount =
+      occupiedSeats.length;
+
+    // 4️⃣ AVAILABLE SEATS
     const availableSeats =
-      totalSeats - occupiedCount;
 
-    // 5️⃣ Today's Attendance
+      totalSeats -
+
+      occupiedCount;
+
+    // 5️⃣ TODAY ATTENDANCE
     const todayAttendance =
       await Attendance.countDocuments({
+
         libraryId,
 
         checkInTime: {
-          $gte: startOfDay,
-          $lte: endOfDay
+
+          $gte:
+            startOfDay,
+
+          $lte:
+            endOfDay
+
         }
+
       });
 
-    // 6️⃣ Today's Revenue
+    // 6️⃣ TODAY REVENUE
     const todayFeesRecords =
       await Fees.find({
+
         libraryId,
-        paymentDate: today
+
+        paymentDate: {
+
+          $gte:
+            startOfDay,
+
+          $lte:
+            endOfDay
+
+        }
+
       });
 
     const todayRevenue =
       todayFeesRecords.reduce(
+
         (sum, item) =>
+
           sum +
-          Number(item.amountPaid || 0),
+
+          Number(
+            item.totalAmount || 0
+          ),
+
         0
+
       );
 
-    // 7️⃣ Monthly Pending Renewals ✅
+    // 7️⃣ PENDING RENEWALS
     const currentMonth =
       new Date().getMonth();
 
@@ -181,29 +238,46 @@ export const getAdminDashboard = async (req, res) => {
 
     const activeStudents =
       await Student.find({
+
         libraryId,
-        status: "active"
+
+        status:
+          "active"
+
       });
 
     let pendingBills = 0;
 
     for (const student of activeStudents) {
 
-      // 🔥 Latest fees
+      // ✅ LATEST FEES
       const latestFees =
         await Fees.findOne({
+
           libraryId,
-          studentId: student._id
-        }).sort({ createdAt: -1 });
 
-      // 🔥 no fees
-      if (!latestFees) continue;
+          studentId:
+            student._id
 
-      // 🔥 missing end date
-      if (!latestFees.endDate) continue;
+        }).sort({
+
+          createdAt:
+            -1
+
+        });
+
+      // ❌ NO FEES
+      if (!latestFees)
+        continue;
+
+      // ❌ NO END DATE
+      if (!latestFees.endDate)
+        continue;
 
       const expiryDate =
-        new Date(latestFees.endDate);
+        new Date(
+          latestFees.endDate
+        );
 
       const expiryMonth =
         expiryDate.getMonth();
@@ -211,17 +285,24 @@ export const getAdminDashboard = async (req, res) => {
       const expiryYear =
         expiryDate.getFullYear();
 
-      // 🔥 current month expired renewals only
+      // ✅ CURRENT MONTH EXPIRED
       if (
+
         expiryMonth === currentMonth &&
+
         expiryYear === currentYear &&
+
         expiryDate < new Date()
+
       ) {
+
         pendingBills++;
+
       }
+
     }
 
-    // 8️⃣ Pending Complaints
+    // 8️⃣ PENDING COMPLAINTS
     let pendingComplaints = 0;
 
     try {
@@ -230,41 +311,68 @@ export const getAdminDashboard = async (req, res) => {
 
         pendingComplaints =
           await Complaint.countDocuments({
+
             libraryId,
-            status: "pending"
+
+            status:
+              "pending"
+
           });
+
       }
 
     } catch (err) {
 
       console.log(
+
         "Complaint fetch error:",
+
         err.message
+
       );
+
     }
 
     res.json({
+
       totalStudents,
+
       totalSeats,
-      occupiedSeats: occupiedCount,
+
+      occupiedSeats:
+        occupiedCount,
+
       availableSeats,
+
       todayAttendance,
+
       todayRevenue,
+
       pendingBills,
+
       pendingComplaints
+
     });
 
   } catch (error) {
 
     console.error(
+
       "ADMIN DASHBOARD ERROR:",
+
       error
+
     );
 
     res.status(500).json({
-      message: error.message
+
+      message:
+        error.message
+
     });
+
   }
+
 };
 
 export const getLast7DaysRevenue = async (req, res) => {
