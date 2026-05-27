@@ -44,11 +44,12 @@ export const createSeat = async (req, res) => {
   }
 };
 
-
 export const allotSeatToStudent = async (req, res) => {
   try {
-    const { seatId, studentId } = req.body;
-    const { libraryId, role } = req.user;
+
+    const { seatId, studentId, shift } = req.body;
+
+    const { libraryId } = req.user;
 
     const student = await Student.findById(studentId);
 
@@ -58,26 +59,34 @@ export const allotSeatToStudent = async (req, res) => {
       });
     }
 
-    let shift = "fullDay";
-
     const studyHours =
       student.studyHours ||
       student.planHours ||
       12;
 
-    // 🔥 AUTO SHIFT
-    if (studyHours <= 4) {
-      shift = "morning";
-    }
-    else if (studyHours <= 8) {
-      shift = "evening";
-    }
-    else {
-      shift = "fullDay";
+    // 🔥 FULL RESERVED VALIDATION
+    if (
+      shift === "fullDay" &&
+      studyHours < 12
+    ) {
+      return res.status(400).json({
+        message:
+          "Only full day plan students can reserve seat"
+      });
     }
 
+    // 🔥 PARTIAL EXPIRE TIME
+    let expiryTime = null;
 
-    // 1️⃣ Check seat belongs to this library
+    if (shift === "partial") {
+
+      expiryTime = new Date(
+        Date.now() +
+        studyHours * 60 * 60 * 1000
+      );
+    }
+
+    // 1️⃣ Check seat belongs to library
     const seat = await Seat.findOne({
       _id: seatId,
       libraryId
@@ -85,68 +94,102 @@ export const allotSeatToStudent = async (req, res) => {
 
     if (!seat) {
       return res.status(404).json({
-        message: "Seat not found in your library"
+        message:
+          "Seat not found in your library"
       });
     }
 
-    // 2️⃣ Check if student already has active seat
-    const existingStudentBooking = await SeatBooking.findOne({
-      studentId,
-      status: "active"
-    });
+    // 2️⃣ Auto expire old occupied seats
+    await SeatBooking.updateMany(
+      {
+        status: "active",
+        shift: "partial",
+        expiryTime: {
+          $lte: new Date()
+        }
+      },
+      {
+        $set: {
+          status: "expired"
+        }
+      }
+    );
+
+    // 3️⃣ Student already active?
+    const existingStudentBooking =
+      await SeatBooking.findOne({
+        studentId,
+        status: "active"
+      });
 
     if (existingStudentBooking) {
       return res.status(400).json({
-        message: "Student already has an active seat"
+        message:
+          "Student already has active seat"
       });
     }
 
-    // 3️⃣ Check seat active bookings
-    const seatBookings = await SeatBooking.find({
-      seatId,
-      status: "active"
-    });
+    // 4️⃣ Existing seat bookings
+    const seatBookings =
+      await SeatBooking.find({
+        seatId,
+        status: "active"
+      });
 
-    const hasFullDay = seatBookings.find(b => b.shift === "fullDay");
-    const hasMorning = seatBookings.find(b => b.shift === "morning");
-    const hasEvening = seatBookings.find(b => b.shift === "evening");
+    const hasReserved =
+      seatBookings.find(
+        b => b.shift === "fullDay"
+      );
 
-    // 🔴 Full day already booked
-    if (hasFullDay) {
+    const hasOccupied =
+      seatBookings.find(
+        b => b.shift === "partial"
+      );
+
+    // 🔴 Reserved already exists
+    if (hasReserved) {
       return res.status(400).json({
-        message: "Seat already fully occupied"
+        message:
+          "Seat already reserved"
       });
     }
 
-    // 🔴 Conflict logic
-    if (shift === "fullDay" && (hasMorning || hasEvening)) {
+    // 🔴 Cannot reserve occupied seat
+    if (
+      shift === "fullDay" &&
+      hasOccupied
+    ) {
       return res.status(400).json({
-        message: "Seat partially occupied, cannot allot full day"
+        message:
+          "Seat already occupied"
       });
     }
 
-    if (shift === "morning" && hasMorning) {
+    // 🔴 Cannot occupy reserved seat
+    if (
+      shift === "partial" &&
+      hasReserved
+    ) {
       return res.status(400).json({
-        message: "Morning shift already booked"
+        message:
+          "Seat already reserved"
       });
     }
 
-    if (shift === "evening" && hasEvening) {
-      return res.status(400).json({
-        message: "Evening shift already booked"
+    // 5️⃣ Create booking
+    const booking =
+      await SeatBooking.create({
+        seatId,
+        studentId,
+        libraryId,
+        shift,
+        expiryTime,
+        status: "active"
       });
-    }
-
-    // 4️⃣ Create booking
-    const booking = await SeatBooking.create({
-      seatId,
-      studentId,
-      libraryId,
-      shift
-    });
 
     res.status(201).json({
-      message: "Seat allotted successfully",
+      message:
+        "Seat allotted successfully",
       booking
     });
 
@@ -154,41 +197,77 @@ export const allotSeatToStudent = async (req, res) => {
 
     if (error.code === 11000) {
       return res.status(400).json({
-        message: "Seat already booked"
+        message:
+          "Seat already booked"
       });
     }
 
-    res.status(500).json({ message: error.message });
+    res.status(500).json({
+      message: error.message
+    });
   }
 };
 
 export const getSeatStatus = async (req, res) => {
   try {
+
     const { libraryId } = req.user;
 
-    // 1️⃣ Get all seats of this library
-    const seats = await Seat.find({ libraryId });
+    // 🔥 AUTO EXPIRE OCCUPIED BOOKINGS
+    await SeatBooking.updateMany(
+      {
+        status: "active",
+        shift: "partial",
+        expiryTime: {
+          $lte: new Date()
+        }
+      },
+      {
+        $set: {
+          status: "expired"
+        }
+      }
+    );
+
+    // 1️⃣ Get all seats
+    const seats = await Seat.find({
+      libraryId
+    });
 
     const result = [];
 
     for (let seat of seats) {
 
-      // 2️⃣ Get active bookings of seat
-      const bookings = await SeatBooking.find({
-        seatId: seat._id,
-        status: "active"
-      }).populate("studentId", "name studyHours")
+      // 2️⃣ Active bookings
+      const bookings =
+        await SeatBooking.find({
+          seatId: seat._id,
+          status: "active"
+        }).populate(
+          "studentId",
+          "name studyHours"
+        );
 
       let status = "vacant";
 
-      const hasFullDay = bookings.find(b => b.shift === "fullDay");
-      const hasMorning = bookings.find(b => b.shift === "morning");
-      const hasEvening = bookings.find(b => b.shift === "evening");
+      // 🔥 RESERVED
+      const hasReserved =
+        bookings.find(
+          b => b.shift === "Full Day"
+        );
 
-      if (hasFullDay || (hasMorning && hasEvening)) {
-        status = "full";
-      } else if (hasMorning || hasEvening) {
-        status = "partial";
+      // 🔥 OCCUPIED
+      const hasOccupied =
+        bookings.find(
+          b => b.shift === "partial"
+        );
+
+      // 🔥 STATUS LOGIC
+      if (hasReserved) {
+        status = "reserved";
+      }
+      else if (hasOccupied) {
+        status = "occupied";
       }
 
       result.push({
@@ -201,14 +280,23 @@ export const getSeatStatus = async (req, res) => {
           bookings[0]?.studentId?.name || "",
 
         studyHours:
-          bookings[0]?.studentId?.studyHours || ""
+          bookings[0]?.studentId?.studyHours || "",
+
+        shift:
+          bookings[0]?.shift || "",
+
+        expiryTime:
+          bookings[0]?.expiryTime || null
       });
     }
 
     res.json(result);
 
   } catch (error) {
-    res.status(500).json({ message: error.message });
+
+    res.status(500).json({
+      message: error.message
+    });
   }
 };
 

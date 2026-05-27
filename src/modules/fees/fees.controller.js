@@ -6,41 +6,62 @@ export const addFees = async (req, res) => {
   try {
 
     const {
+
       studentId,
-      amountPaid,
+
+      registrationFees,
+
+      monthlyFees,
+
       dueAmount,
+
       planType,
+
       paymentMode,
+
       studyHours,
+
       startDate,
+
       endDate
+
     } = req.body;
 
-    if (!studentId || !planType || !studyHours) {
+    if (
+      !studentId ||
+      !planType ||
+      !studyHours ||
+      !startDate
+    ) {
 
       return res.status(400).json({
+
         success: false,
+
         message:
-          "Student, plan type and study hours are required"
+          "Student, plan type, study hours and start date are required"
+
       });
 
     }
 
-    // ✅ PLAN MONTHS
     const durationMap = {
+
       monthly: 1,
+
       quarterly: 3,
+
       halfYearly: 6,
+
       yearly: 12
+
     };
 
-    // ✅ START DATE
     const start =
       new Date(startDate);
 
     let finalEndDate;
 
-    // ✅ CUSTOM PLAN
     if (planType === "custom") {
 
       finalEndDate =
@@ -51,11 +72,9 @@ export const addFees = async (req, res) => {
       const months =
         durationMap[planType];
 
-      // ✅ CLONE DATE
       finalEndDate =
         new Date(start);
 
-      // ✅ ADD MONTHS
       finalEndDate.setMonth(
         finalEndDate.getMonth() + months
       );
@@ -67,8 +86,17 @@ export const addFees = async (req, res) => {
 
         studentId,
 
-        amountPaid:
-          Number(amountPaid || 0),
+        registrationFees:
+          Number(registrationFees || 0),
+
+        monthlyFees:
+          Number(monthlyFees || 0),
+
+        totalAmount:
+
+          Number(registrationFees || 0) +
+
+          Number(monthlyFees || 0),
 
         dueAmount:
           Number(dueAmount || 0),
@@ -76,12 +104,28 @@ export const addFees = async (req, res) => {
         planType,
 
         paymentDate:
-          new Date(),
+
+          new Date(
+
+            new Date().toLocaleString(
+
+              "en-US",
+
+              {
+
+                timeZone:
+                  "Asia/Kolkata"
+
+              }
+
+            )
+
+          ),
 
         paymentMode,
 
         studyHours:
-          String(studyHours || 0),
+          String(studyHours || ""),
 
         libraryId:
           req.user.libraryId,
@@ -275,81 +319,162 @@ export const getFees = async (req, res) => {
 };
 
 export const getRevenueStats = async (req, res) => {
+
   try {
 
-    const fees = await Fees.find({
-      libraryId: req.user.libraryId
-    });
+    const fees =
+      await Fees.find({
+
+        libraryId:
+          req.user.libraryId
+
+      });
 
     // ✅ TOTAL REVENUE
-    const totalRevenue = fees.reduce(
-      (sum, f) =>
-        sum + Number(f.amountPaid || 0),
+    const totalRevenue =
+      fees.reduce(
+
+        (sum, f) =>
+
+          sum +
+          Number(f.totalAmount || 0),
+
+        0
+
+      );
+
+    // ✅ TODAY REVENUE
+    const today =
+      new Date();
+
+    today.setHours(
+      0,
+      0,
+      0,
       0
     );
 
-    // ✅ TODAY REVENUE
-    const today = new Date();
-
-    today.setHours(0, 0, 0, 0);
-
-    const tomorrow = new Date(today);
+    const tomorrow =
+      new Date(today);
 
     tomorrow.setDate(
       today.getDate() + 1
     );
 
-    const todayRevenue = fees
-      .filter((f) => {
+    const todayRevenue =
+      fees
 
-        if (!f.paymentDate)
-          return false;
+        .filter((f) => {
 
-        const payment =
-          new Date(f.paymentDate);
+          if (!f.paymentDate)
+            return false;
 
-        return (
-          payment >= today &&
-          payment < tomorrow
+          const payment =
+            new Date(
+              f.paymentDate
+            );
+
+          return (
+
+            payment >= today &&
+
+            payment < tomorrow
+
+          );
+
+        })
+
+        .reduce(
+
+          (sum, f) =>
+
+            sum +
+            Number(f.totalAmount || 0),
+
+          0
+
         );
 
-      })
+    // ✅ PENDING
+    const pendingRevenue =
+      fees.reduce(
 
-      .reduce(
         (sum, f) =>
-          sum + Number(f.amountPaid || 0),
+
+          sum +
+          Number(f.dueAmount || 0),
+
         0
+
       );
 
-    // ✅ PENDING REVENUE
-    const pendingRevenue = fees.reduce(
-      (sum, f) =>
-        sum + Number(f.dueAmount || 0),
-      0
-    );
-
     // ✅ ACTIVE PLANS
-    const activePlans = fees.length;
+    const activePlans =
+      fees.length;
+
+    // ✅ REGISTRATION REVENUE
+    const registrationRevenue =
+      fees.reduce(
+
+        (sum, f) =>
+
+          sum +
+          Number(
+            f.registrationFees || 0
+          ),
+
+        0
+
+      );
+
+    // ✅ MONTHLY REVENUE
+    const monthlyRevenue =
+      fees.reduce(
+
+        (sum, f) =>
+
+          sum +
+          Number(
+            f.monthlyFees || 0
+          ),
+
+        0
+
+      );
 
     res.json({
+
+      success: true,
+
       totalRevenue,
+
       todayRevenue,
+
       pendingRevenue,
-      activePlans
+
+      activePlans,
+
+      registrationRevenue,
+
+      monthlyRevenue
+
     });
 
   } catch (error) {
 
-    console.error(
-      "🔥 STATS ERROR:",
-      error
-    );
+    console.error(error);
 
     res.status(500).json({
-      message: error.message
+
+      success: false,
+
+      message:
+        error.message
+
     });
 
   }
+
 };
 
 export const updateFees =
@@ -367,17 +492,24 @@ export const updateFees =
 
       const {
 
-        amountPaid,
+        registrationFees,
+
+        monthlyFees,
+
         dueAmount,
+
         studyHours,
+
         paymentMode,
+
         planType,
+
         startDate,
+
         endDate
 
       } = req.body;
 
-      // ✅ FIND FEES
       const fees =
         await Fees.findOne({
 
@@ -400,9 +532,25 @@ export const updateFees =
 
       }
 
-      // ✅ UPDATE
-      fees.amountPaid =
-        Number(amountPaid || 0);
+      fees.registrationFees =
+        Number(
+          registrationFees || 0
+        );
+
+      fees.monthlyFees =
+        Number(
+          monthlyFees || 0
+        );
+
+      fees.totalAmount =
+
+        Number(
+          registrationFees || 0
+        ) +
+
+        Number(
+          monthlyFees || 0
+        );
 
       fees.dueAmount =
         Number(dueAmount || 0);
@@ -419,7 +567,6 @@ export const updateFees =
       fees.startDate =
         startDate;
 
-      // ✅ CUSTOM PLAN
       if (
         planType === "custom"
       ) {
@@ -487,15 +634,28 @@ const formatLocalDate = (date) => {
 };
 
 export const renewFees = async (req, res) => {
+
   try {
 
     const { id } = req.params;
 
-    // 🔥 NEW
     const {
       duration,
       renewType
     } = req.body;
+
+    // ✅ PLAN TYPE MAP
+    const planTypeByDuration = {
+
+      1: "monthly",
+
+      3: "quarterly",
+
+      6: "halfYearly",
+
+      12: "yearly"
+
+    };
 
     const planType =
       planTypeByDuration[
@@ -505,23 +665,39 @@ export const renewFees = async (req, res) => {
     if (!planType) {
 
       return res.status(400).json({
+
+        success: false,
+
         message:
           "Please select a valid renewal duration"
+
       });
+
     }
 
+    // ✅ FIND CURRENT FEES
     const currentFees =
       await Fees.findOne({
+
         _id: id,
+
         libraryId:
           req.user.libraryId
-      }).populate({
-        path: "studentId",
-        match: {
-          status: "active"
-        },
-        select: "_id status"
-      });
+
+      })
+
+        .populate({
+
+          path: "studentId",
+
+          match: {
+            status: "active"
+          },
+
+          select:
+            "_id status"
+
+        });
 
     if (
       !currentFees ||
@@ -529,34 +705,59 @@ export const renewFees = async (req, res) => {
     ) {
 
       return res.status(404).json({
+
+        success: false,
+
         message:
           "Active student renewal record not found"
+
       });
+
     }
 
-    const today = new Date();
-
+    // ✅ PAYMENT DATE
     const paymentDate =
-      formatLocalDate(today);
+      new Date(
+        new Date().toLocaleString(
+          "en-US",
+          {
+            timeZone:
+              "Asia/Kolkata"
+          }
+        )
+      );
 
-    // 🔥 BOTH OPTIONS
+    // ✅ RENEW START DATE
     let renewalStartDate;
 
-    // 🔥 FINAL FIX
+    if (
+      renewType === "continue"
+    ) {
 
-    if (renewType === "continue") {
-
-      // old expiry date
-      renewalStartDate = new Date(
-        currentFees.endDate
-      );
+      // ✅ SAME DATE CONTINUE
+      renewalStartDate =
+        new Date(
+          currentFees.endDate
+        );
 
     } else {
 
-      // today date
-      renewalStartDate = new Date();
+      // ✅ FRESH START
+      renewalStartDate =
+        new Date();
+
     }
 
+    // ✅ CALCULATE RENEWAL AMOUNT
+    const renewalAmount =
+
+      Number(
+        currentFees.monthlyFees || 0
+      ) *
+
+      Number(duration);
+
+    // ✅ CREATE RENEWAL
     const renewedFees =
       await Fees.create({
 
@@ -566,8 +767,16 @@ export const renewFees = async (req, res) => {
         libraryId:
           req.user.libraryId,
 
-        amountPaid:
-          currentFees.amountPaid,
+        registrationFees: 0,
+
+        monthlyFees:
+          renewalAmount,
+
+        totalAmount:
+          renewalAmount,
+
+        dueAmount:
+          currentFees.dueAmount || 0,
 
         planType,
 
@@ -576,16 +785,16 @@ export const renewFees = async (req, res) => {
         paymentMode:
           currentFees.paymentMode,
 
-        // 🔥 UPDATED
         startDate:
           renewalStartDate,
 
         studyHours:
-          currentFees.studyHours,
+          currentFees.studyHours
 
       });
 
     res.json({
+
       success: true,
 
       message:
@@ -607,214 +816,249 @@ export const renewFees = async (req, res) => {
 
         status:
           "completed"
+
       }
+
     });
 
   } catch (error) {
 
+    console.error(error);
+
     res.status(500).json({
-      message: error.message
+
+      success: false,
+
+      message:
+        error.message
+
     });
+
   }
+
 };
 
 export const getRenewalList = async (req, res) => {
+
   try {
 
-    const { libraryId } = req.user;
-    const { month, year } = req.query;
+    const { libraryId } =
+      req.user;
 
-    const today = new Date();
+    // ✅ TODAY
+    const today =
+      new Date();
 
-    const selectedMonth = month
-      ? Number(month)
-      : today.getMonth() + 1;
-
-    const selectedYear = year
-      ? Number(year)
-      : today.getFullYear();
-
-    const startOfMonth = new Date(
-      selectedYear,
-      selectedMonth - 1,
-      1
-    );
-
-    const endOfMonth = new Date(
-      selectedYear,
-      selectedMonth,
+    today.setHours(
       0,
-      23,
-      59,
-      59,
-      999
+      0,
+      0,
+      0
     );
 
-    const fees = await Fees.find({
-      libraryId
-    })
-      .populate({
-        path: "studentId",
-        match: {
-          status: "active"
-        },
-        select:
-          "enrollmentNumber name phone studyHours status"
+    // ✅ GET ALL FEES
+    const fees =
+      await Fees.find({
+
+        libraryId
+
       })
-      .sort({ createdAt: -1 });
 
-    // 🔥 GROUP BY STUDENT
-    const grouped = {};
+        .populate({
 
-    fees.forEach(item => {
+          path: "studentId",
 
-      if (!item.studentId) return;
+          match: {
+            status: "active"
+          },
 
-      const id =
-        item.studentId._id.toString();
+          select:
+            "enrollmentNumber name phone"
 
-      if (!grouped[id])
-        grouped[id] = [];
+        })
 
-      grouped[id].push(item);
+        .sort({
+
+          endDate: -1
+
+        });
+
+    // ✅ REMOVE INVALID RECORDS
+    const validFees =
+      fees.filter(
+
+        (f) =>
+
+          f.studentId &&
+
+          f.endDate
+
+      );
+
+    // ✅ LATEST RECORD ONLY
+    const latestFeesMap = {};
+
+    validFees.forEach((f) => {
+
+      const studentId =
+        f.studentId._id.toString();
+
+      if (
+
+        !latestFeesMap[studentId] ||
+
+        new Date(f.endDate) >
+
+        new Date(
+          latestFeesMap[studentId].endDate
+        )
+
+      ) {
+
+        latestFeesMap[studentId] = f;
+
+      }
+
     });
 
-    // 🔥 FINAL LOGIC
+    // ✅ FINAL RESULT
     const result =
-      Object.values(grouped)
-        .flatMap(records => {
+      Object.values(latestFeesMap)
 
-          // latest first
-          records.sort(
-            (a, b) =>
-              new Date(b.createdAt) -
-              new Date(a.createdAt)
+        .map((f) => {
+
+          const endDate =
+            new Date(f.endDate);
+
+          endDate.setHours(
+            0,
+            0,
+            0,
+            0
           );
 
-          const latest =
-            records[0];
+          // ✅ DAYS LEFT
+          const diffTime =
+            endDate - today;
 
-          const previous =
-            records[1];
+          const diffDays =
+            Math.ceil(
 
-          const student =
-            latest.studentId;
+              diffTime /
 
-          const rows = [];
+              (1000 * 60 * 60 * 24)
 
-          // 🔥 OLD EXPIRY
-          const expiryDate =
-            previous
-              ? new Date(
-                previous.endDate
-              )
-              : new Date(
-                latest.endDate
-              );
+            );
 
-          // ✅ CURRENT MONTH COMPLETED
-          if (
-            previous &&
-            expiryDate >= startOfMonth &&
-            expiryDate <= endOfMonth
-          ) {
+          // ✅ STATUS
+          let status =
+            "completed";
 
-            rows.push({
+          // ❌ EXPIRED
+          if (diffDays < 0) {
 
-              _id:
-                previous._id,
+            status =
+              "pending";
 
-              studentId:
-                student._id,
-
-              enrollmentNumber:
-                student.enrollmentNumber,
-
-              name:
-                student.name,
-
-              phone:
-                student.phone,
-
-              studyHours:
-                latest.hours,
-
-              lastRenewalDate:
-                expiryDate,
-
-              renewDate:
-                latest.paymentDate,
-
-              nextRenewDate:
-                latest.endDate,
-
-              status:
-                "completed",
-
-              canRenew:
-                false
-            });
           }
 
-          // ✅ NEXT MONTH WARNING/PENDING
-          if (
-            latest.endDate &&
-            new Date(latest.endDate) >= startOfMonth &&
-            new Date(latest.endDate) <= endOfMonth
+          // ⚠ 3 DAYS LEFT
+          else if (
+            diffDays <= 3
           ) {
 
-            rows.push({
+            status =
+              "warning";
 
-              _id:
-                latest._id,
-
-              studentId:
-                student._id,
-
-              enrollmentNumber:
-                student.enrollmentNumber,
-
-              name:
-                student.name,
-
-              phone:
-                student.phone,
-
-              studyHours:
-                latest.hours,
-
-              lastRenewalDate:
-                latest.endDate,
-
-              renewDate:
-                latest.paymentDate,
-
-              nextRenewDate:
-                latest.endDate,
-
-              status:
-                new Date(latest.endDate) < today
-                  ? "pending"
-                  : "warning",
-
-              canRenew:
-                true
-            });
           }
 
-          return rows;
+          // ✅ RENEWED
+          if (
+
+            f.paymentDate &&
+
+            diffDays > 3
+
+          ) {
+
+            status =
+              "completed";
+
+          }
+
+          return {
+
+            _id:
+              f._id,
+
+            studentId:
+              f.studentId._id,
+
+            enrollmentNumber:
+              f.studentId.enrollmentNumber,
+
+            name:
+              f.studentId.name,
+
+            phone:
+              f.studentId.phone,
+
+            studyHours:
+              f.studyHours || "-",
+
+            monthlyFees:
+              f.monthlyFees || 0,
+
+            totalAmount:
+              f.totalAmount || 0,
+
+            lastRenewalDate:
+              f.startDate,
+
+            renewDate:
+              f.paymentDate,
+
+            nextRenewDate:
+              f.endDate,
+
+            status,
+
+            // ✅ RENEW BUTTON ONLY
+            canRenew:
+
+              status === "warning" ||
+
+              status === "pending"
+
+          };
+
         });
 
     res.json({
+
       success: true,
-      count: result.length,
-      data: result
+
+      count:
+        result.length,
+
+      data:
+        result
+
     });
 
   } catch (error) {
 
+    console.error(error);
+
     res.status(500).json({
-      message: error.message
+
+      success: false,
+
+      message:
+        error.message
+
     });
+
   }
+
 };
