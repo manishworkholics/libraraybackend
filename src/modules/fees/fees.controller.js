@@ -1,4 +1,5 @@
 import Fees from "./fees.model.js";
+import Student from "../student/student.model.js";
 
 /* Add Fees Entry */
 export const addFees = async (req, res) => {
@@ -762,6 +763,17 @@ export const renewFees = async (req, res) => {
     const renewalAmount =
 
       Number(amount || 0);
+    // ✅ END DATE
+    const renewalEndDate =
+      new Date(renewalStartDate);
+
+    renewalEndDate.setMonth(
+
+      renewalEndDate.getMonth() +
+
+      Number(duration)
+
+    );
 
     // ✅ CREATE RENEWAL
     const renewedFees =
@@ -793,6 +805,9 @@ export const renewFees = async (req, res) => {
 
         startDate:
           renewalStartDate,
+
+        endDate:
+          renewalEndDate,
 
         studyHours
 
