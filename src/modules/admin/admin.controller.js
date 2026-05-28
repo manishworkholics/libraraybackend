@@ -179,118 +179,253 @@ export const updateExpense = async (req, res) => {
 export const getAdminProfitDashboard = async (req, res) => {
   try {
 
-    // ✅ 1. REVENUE (fees collected)
-    const revenueAgg = await Fees.aggregate([
-      {
-        $match: {
-          libraryId: req.user.libraryId   // 🔥 only this library
-        }
-      },
-      {
-        $group: {
-          _id: null,
-          totalRevenue: { $sum: "$amountPaid" }
-        }
-      }
-    ]);
+    // ✅ TOTAL REVENUE
+    const revenueAgg =
+      await Fees.aggregate([
 
-    // ✅ 2. EXPENSE (library only)
-    const expenseAgg = await Expense.aggregate([
-      {
-        $match: {
-          libraryId: req.user.libraryId,
-          type: "library"   // 🔥 important
-        }
-      },
-      {
-        $group: {
-          _id: null,
-          totalExpense: { $sum: "$amount" }
-        }
-      }
-    ]);
+        {
+          $match: {
+            libraryId:
+              req.user.libraryId
+          }
+        },
 
-    const totalRevenue = revenueAgg.length ? revenueAgg[0].totalRevenue : 0;
-    const totalExpense = expenseAgg.length ? expenseAgg[0].totalExpense : 0;
+        {
+          $group: {
+            _id: null,
 
-    const profit = totalRevenue - totalExpense;
+            totalRevenue: {
+              $sum: "$totalAmount"
+            }
+          }
+        }
+
+      ]);
+
+    // ✅ TOTAL EXPENSE
+    const expenseAgg =
+      await Expense.aggregate([
+
+        {
+          $match: {
+            libraryId:
+              req.user.libraryId
+          }
+        },
+
+        {
+          $group: {
+            _id: null,
+
+            totalExpense: {
+              $sum: "$amount"
+            }
+          }
+        }
+
+      ]);
+
+    const totalRevenue =
+      revenueAgg.length
+        ? revenueAgg[0]
+          .totalRevenue
+        : 0;
+
+    const totalExpense =
+      expenseAgg.length
+        ? expenseAgg[0]
+          .totalExpense
+        : 0;
+
+    const profit =
+      totalRevenue -
+      totalExpense;
 
     res.json({
+
       totalRevenue,
+
       totalExpense,
+
       profit
+
     });
 
   } catch (error) {
+
     console.log(error);
-    res.status(500).json({ message: error.message });
-  }
-};
 
-export const getAdminMonthlyProfitGraph = async (req, res) => {
-  try {
-    const adminId = req.user._id;
-
-    // 👉 Optional: year filter (default current year)
-    const year = req.query.year
-      ? Number(req.query.year)
-      : new Date().getFullYear();
-
-    const startDate = new Date(`${year}-01-01`);
-    const endDate = new Date(`${year}-12-31`);
-
-    // 🔥 REVENUE (FIXED)
-    const revenue = await Fees.aggregate([
-      {
-        $match: {
-          adminId: adminId,
-          paymentDate: { $gte: startDate, $lte: endDate }
-        }
-      },
-      {
-        $group: {
-          _id: {
-            month: { $month: "$paymentDate" },
-            year: { $year: "$paymentDate" }
-          },
-          total: { $sum: "$amountPaid" } // ✅ FIXED FIELD
-        }
-      },
-      { $sort: { "_id.year": 1, "_id.month": 1 } }
-    ]);
-
-    // 🔥 EXPENSE
-    const expense = await Expense.aggregate([
-      {
-        $match: {
-          adminId: adminId,
-          createdAt: { $gte: startDate, $lte: endDate }
-        }
-      },
-      {
-        $group: {
-          _id: {
-            month: { $month: "$createdAt" },
-            year: { $year: "$createdAt" }
-          },
-          total: { $sum: "$amount" }
-        }
-      },
-      { $sort: { "_id.year": 1, "_id.month": 1 } }
-    ]);
-
-    // ✅ SEND RESPONSE
-    res.status(200).json({
-      success: true,
-      revenue,
-      expense
-    });
-
-  } catch (error) {
-    console.error("Profit Graph Error:", error);
     res.status(500).json({
-      success: false,
-      message: error.message
+      message:
+        error.message
     });
+
   }
 };
+
+export const getAdminMonthlyProfitGraph =
+  async (req, res) => {
+
+    try {
+
+      // ✅ YEAR FILTER
+      const year =
+        req.query.year
+          ? Number(req.query.year)
+          : new Date()
+            .getFullYear();
+
+      const startDate =
+        new Date(
+          `${year}-01-01`
+        );
+
+      const endDate =
+        new Date(
+          `${year}-12-31`
+        );
+
+      // ✅ REVENUE GRAPH
+      const revenue =
+        await Fees.aggregate([
+
+          {
+            $match: {
+
+              libraryId:
+                req.user.libraryId,
+
+              paymentDate: {
+
+                $gte:
+                  startDate,
+
+                $lte:
+                  endDate
+
+              }
+
+            }
+          },
+
+          {
+            $group: {
+
+              _id: {
+
+                month: {
+                  $month:
+                    "$paymentDate"
+                },
+
+                year: {
+                  $year:
+                    "$paymentDate"
+                }
+
+              },
+
+              total: {
+                $sum:
+                  "$totalAmount"
+              }
+
+            }
+          },
+
+          {
+            $sort: {
+              "_id.year": 1,
+              "_id.month": 1
+            }
+          }
+
+        ]);
+
+      // ✅ EXPENSE GRAPH
+      const expense =
+        await Expense.aggregate([
+
+          {
+            $match: {
+
+              libraryId:
+                req.user.libraryId,
+
+              createdAt: {
+
+                $gte:
+                  startDate,
+
+                $lte:
+                  endDate
+
+              }
+
+            }
+          },
+
+          {
+            $group: {
+
+              _id: {
+
+                month: {
+                  $month:
+                    "$createdAt"
+                },
+
+                year: {
+                  $year:
+                    "$createdAt"
+                }
+
+              },
+
+              total: {
+                $sum:
+                  "$amount"
+              }
+
+            }
+          },
+
+          {
+            $sort: {
+              "_id.year": 1,
+              "_id.month": 1
+            }
+          }
+
+        ]);
+
+      // ✅ RESPONSE
+      res.status(200).json({
+
+        success: true,
+
+        revenue,
+
+        expense
+
+      });
+
+    } catch (error) {
+
+      console.error(
+        "Profit Graph Error:",
+        error
+      );
+
+      res.status(500).json({
+
+        success: false,
+
+        message:
+          error.message
+
+      });
+
+    }
+
+  };

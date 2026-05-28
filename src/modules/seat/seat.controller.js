@@ -448,44 +448,91 @@ export const getMySeat = async (req, res) => {
   }
 };
 
-export const getSeatDashboardSummary = async (req, res) => {
-  try {
-    const { libraryId } = req.user;
+export const getSeatDashboardSummary =
+  async (req, res) => {
 
-    const seats = await Seat.find({ libraryId });
+    try {
 
-    let vacant = 0;
-    let partial = 0;
-    let full = 0;
+      const { libraryId } =
+        req.user;
 
-    for (let seat of seats) {
+      const seats =
+        await Seat.find({
+          libraryId
+        });
 
-      const bookings = await SeatBooking.find({
-        seatId: seat._id,
-        status: "active"
+      let vacant = 0;
+
+      let partial = 0;
+
+      let full = 0;
+
+      for (let seat of seats) {
+
+        const bookings =
+          await SeatBooking.find({
+
+            seatId: seat._id,
+
+            status: "active"
+
+          });
+
+        // ✅ RESERVED
+        const hasReserved =
+          bookings.find(
+            b =>
+              b.shift === "Full Day"
+          );
+
+        // ✅ OCCUPIED
+        const hasOccupied =
+          bookings.find(
+            b =>
+              b.shift === "partial"
+          );
+
+        // ✅ SUMMARY
+        if (hasReserved) {
+
+          full++;
+
+        }
+        else if (hasOccupied) {
+
+          partial++;
+
+        }
+        else {
+
+          vacant++;
+
+        }
+
+      }
+
+      res.json({
+
+        totalSeats:
+          seats.length,
+
+        vacant,
+
+        partial,
+
+        full
+
       });
 
-      const hasFullDay = bookings.find(b => b.shift === "fullDay");
-      const hasMorning = bookings.find(b => b.shift === "morning");
-      const hasEvening = bookings.find(b => b.shift === "evening");
+    } catch (error) {
 
-      if (hasFullDay || (hasMorning && hasEvening)) {
-        full++;
-      } else if (hasMorning || hasEvening) {
-        partial++;
-      } else {
-        vacant++;
-      }
+      res.status(500).json({
+
+        message:
+          error.message
+
+      });
+
     }
 
-    res.json({
-      totalSeats: seats.length,
-      vacant,
-      partial,
-      full
-    });
-
-  } catch (error) {
-    res.status(500).json({ message: error.message });
-  }
-};
+  };

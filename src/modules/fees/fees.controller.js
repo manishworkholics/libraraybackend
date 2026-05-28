@@ -641,7 +641,9 @@ export const renewFees = async (req, res) => {
 
     const {
       duration,
-      renewType
+      renewType,
+      studyHours,
+      amount
     } = req.body;
 
     // ✅ PLAN TYPE MAP
@@ -695,7 +697,7 @@ export const renewFees = async (req, res) => {
           },
 
           select:
-            "_id status"
+            "_id status studyHours"
 
         });
 
@@ -714,6 +716,14 @@ export const renewFees = async (req, res) => {
       });
 
     }
+
+    // ✅ UPDATE STUDENT PLAN
+    await Student.findByIdAndUpdate(
+      currentFees.studentId._id,
+      {
+        studyHours
+      }
+    );
 
     // ✅ PAYMENT DATE
     const paymentDate =
@@ -748,14 +758,10 @@ export const renewFees = async (req, res) => {
 
     }
 
-    // ✅ CALCULATE AMOUNT
+    // ✅ FINAL AMOUNT
     const renewalAmount =
 
-      Number(
-        currentFees.monthlyFees || 0
-      ) *
-
-      Number(duration);
+      Number(amount || 0);
 
     // ✅ CREATE RENEWAL
     const renewedFees =
@@ -788,8 +794,7 @@ export const renewFees = async (req, res) => {
         startDate:
           renewalStartDate,
 
-        studyHours:
-          currentFees.studyHours
+        studyHours
 
       });
 
@@ -878,7 +883,7 @@ export const getRenewalList = async (req, res) => {
           },
 
           select:
-            "enrollmentNumber name phone"
+            "enrollmentNumber name phone studyHours amount"
 
         })
 
@@ -1020,8 +1025,13 @@ export const getRenewalList = async (req, res) => {
             phone:
               f.studentId.phone,
 
+            // ✅ LATEST STUDY HOURS
             studyHours:
-              f.studyHours || "-",
+              f.studentId.studyHours || "-",
+
+            // ✅ LATEST AMOUNT
+            amount:
+              f.studentId.amount || 0,
 
             monthlyFees:
               f.monthlyFees || 0,
