@@ -536,3 +536,82 @@ export const getSeatDashboardSummary =
     }
 
   };
+
+  export const deleteSeat = async (
+  req,
+  res
+) => {
+
+  try {
+
+    const { id } = req.params;
+
+    const { libraryId } =
+      req.user;
+
+    // ✅ FIND SEAT
+    const seat =
+      await Seat.findOne({
+
+        _id: id,
+
+        libraryId
+
+      });
+
+    if (!seat) {
+
+      return res.status(404).json({
+
+        message:
+          "Seat not found"
+
+      });
+
+    }
+
+    // ✅ CHECK ACTIVE BOOKING
+    const activeBooking =
+      await SeatBooking.findOne({
+
+        seatId: id,
+
+        status: "active"
+
+      });
+
+    if (activeBooking) {
+
+      return res.status(400).json({
+
+        message:
+          "Cannot delete occupied seat"
+
+      });
+
+    }
+
+    // ✅ DELETE SEAT
+    await Seat.findByIdAndDelete(id);
+
+    res.json({
+
+      success: true,
+
+      message:
+        "Seat deleted successfully"
+
+    });
+
+  } catch (error) {
+
+    res.status(500).json({
+
+      message:
+        error.message
+
+    });
+
+  }
+
+};

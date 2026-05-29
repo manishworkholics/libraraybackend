@@ -1,6 +1,6 @@
 import express from "express";
 import adminAuth from "../../middlewares/adminAuth.middleware.js";
-import { createSeat, cancelSeatBooking, getMySeat, getSeatStatus, bookSeat, getSeatDashboardSummary, allotSeatToStudent } from "./seat.controller.js";
+import { createSeat, cancelSeatBooking, getMySeat, getSeatStatus, bookSeat, getSeatDashboardSummary, allotSeatToStudent,deleteSeat } from "./seat.controller.js";
 import studentAuth from "../../middlewares/studentAuth.middleware.js";
 
 
@@ -13,5 +13,10 @@ router.post("/book", studentAuth, bookSeat);
 router.delete("/cancel", studentAuth, cancelSeatBooking);
 router.get("/my-seat", studentAuth, getMySeat);
 router.get("/dashboard-summary", adminAuth, getSeatDashboardSummary);
+router.delete(
+  "/delete/:id",
+  adminAuth,
+  deleteSeat
+);
 
 export default router;  
