@@ -4,6 +4,7 @@ import SeatBooking from "../commonmodel/seatBooking.model.js";
 import Attendance from "../attendance/attendance.model.js";
 import Fees from "../fees/fees.model.js";
 import Complaint from "../complaint/complaint.model.js";
+import Enquiry from "../enquiry/enquiry.model.js";
 
 export const getDashboardStats = async (req, res) => {
   try {
@@ -845,9 +846,9 @@ export const getGraphData = async (req, res) => {
 
 export const getRecentActivities = async (req, res) => {
   try {
-
     const { libraryId } = req.user;
 
+    // Attendance
     const attendance = await Attendance.find({
       libraryId
     })
@@ -855,6 +856,7 @@ export const getRecentActivities = async (req, res) => {
       .sort({ createdAt: -1 })
       .limit(5);
 
+    // Renewals
     const renewals = await Fees.find({
       libraryId
     })
@@ -862,50 +864,62 @@ export const getRecentActivities = async (req, res) => {
       .sort({ createdAt: -1 })
       .limit(5);
 
+    // Website Enquiries
+    const enquiries = await Enquiry.find({
+      libraryId,
+      source: "website"
+    })
+      .sort({ createdAt: -1 })
+      .limit(5);
+
     const activities = [];
 
-    // 🔥 Attendance Activities
-    attendance.forEach(item => {
-
+    // Attendance Activities
+    attendance.forEach((item) => {
       activities.push({
         type: "attendance",
-
-        name: item.studentId?.name,
-
+        name: item.studentId?.name || "Student",
         message: "Marked Present",
-
         createdAt: item.createdAt
       });
     });
 
-    // 🔥 Renewal Activities
-    renewals.forEach(item => {
-
+    // Renewal Activities
+    renewals.forEach((item) => {
       activities.push({
         type: "renewal",
-
-        name: item.studentId?.name,
-
+        name: item.studentId?.name || "Student",
         message: "Renewed Membership",
-
         createdAt: item.createdAt
       });
     });
 
-    // 🔥 Latest first
+    // Enquiry Activities
+    enquiries.forEach((item) => {
+      activities.push({
+        type: "enquiry",
+        name: item.name,
+        message: `${item.course} enquiry received`,
+        createdAt: item.createdAt
+      });
+    });
+
+    // Sort all activities by latest first
     activities.sort(
       (a, b) =>
         new Date(b.createdAt) -
         new Date(a.createdAt)
     );
 
-    res.json(
+    return res.status(200).json(
       activities.slice(0, 8)
     );
 
   } catch (error) {
+    console.error("Recent Activity Error:", error);
 
-    res.status(500).json({
+    return res.status(500).json({
+      success: false,
       message: error.message
     });
   }
