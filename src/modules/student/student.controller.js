@@ -145,36 +145,43 @@ export const createStudent = async (req, res) => {
         .toUpperCase();
 
     // ✅ FIND LAST STUDENT
-    const lastStudent =
-      await Student.findOne({
-        libraryId
-      })
-        .sort({
-          createdAt: -1
-        });
+    // ✅ FIND HIGHEST ENROLLMENT NUMBER
+    const students = await Student.find({
+      libraryId,
+      enrollmentNumber: {
+        $regex: `^${prefix}-`
+      }
+    }).select("enrollmentNumber");
 
-    let nextNumber = 1;
+    let maxNumber = 0;
 
-    if (
-      lastStudent?.enrollmentNumber
-    ) {
+    students.forEach((student) => {
 
-      const lastNumber =
-        parseInt(
-          lastStudent
-            .enrollmentNumber
-            .split("-")[1]
-        );
+      if (!student.enrollmentNumber)
+        return;
 
-      nextNumber =
-        lastNumber + 1;
+      const parts =
+        student.enrollmentNumber.split("-");
 
-    }
+      const currentNumber =
+        parseInt(parts[1]);
+
+      if (
+        !isNaN(currentNumber) &&
+        currentNumber > maxNumber
+      ) {
+        maxNumber =
+          currentNumber;
+      }
+
+    });
+
+    const nextNumber =
+      maxNumber + 1;
 
     // ✅ ENROLLMENT NUMBER
     const enrollmentNumber =
       `${prefix}-${nextNumber}`;
-
     // ✅ PASSWORD
     const studentPassword =
       password ||
