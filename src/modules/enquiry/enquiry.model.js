@@ -20,10 +20,6 @@ const enquirySchema = new mongoose.Schema(
       trim: true
     },
 
-    slot: {
-      type: String,
-    },
-
     course: {
       type: String,
       required: true

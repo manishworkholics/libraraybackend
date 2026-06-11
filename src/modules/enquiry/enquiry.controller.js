@@ -5,10 +5,10 @@ import Enquiry from "./enquiry.model.js";
 ========================================= */
 export const createEnquiry = async (req, res) => {
   try {
-    const { name, contact, address, slot, course } = req.body;
+    const { name, contact, address, course } = req.body;
     const { libraryId } = req.user;
 
-    if (!name || !contact || !address || !slot || !course) {
+    if (!name || !contact || !address || !course) {
       return res.status(400).json({
         message: "Please fill all required fields"
       });
@@ -18,7 +18,6 @@ export const createEnquiry = async (req, res) => {
       name,
       contact,
       address,
-      slot,
       course,
       libraryId
     });
@@ -29,7 +28,9 @@ export const createEnquiry = async (req, res) => {
     });
 
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    res.status(500).json({
+      message: error.message
+    });
   }
 };
 

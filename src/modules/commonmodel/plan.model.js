@@ -5,40 +5,46 @@ const planSchema = new mongoose.Schema(
     name: {
       type: String,
       required: true,
-    },
-
-    price: {
-      type: Number,
-      required: true,
-    },
-
-    durationDays: {
-      type: Number,
-      required: true,
-    },
-
-    maxStudents: {
-      type: Number,
-      default: 0,
+      trim: true,
     },
 
     maxSeats: {
       type: Number,
-      default: 0,
+      required: true,
+      min: 1,
     },
 
-    features: [
-      {
-        type: String,
-      },
-    ],
+    monthlyPrice: {
+      type: Number,
+      required: true,
+      min: 0,
+    },
+
+    quarterlyPrice: {
+      type: Number,
+      required: true,
+      min: 0,
+    },
+    
+    halfYearlyPrice: {
+      type: Number,
+      required: true,
+      min: 0,
+    },
+    yearlyPrice: {
+      type: Number,
+      required: true,
+      min: 0,
+    },
 
     isActive: {
       type: Boolean,
       default: true,
     },
   },
-  { timestamps: true }
+  {
+    timestamps: true,
+  }
 );
 
-export default mongoose.models.Plan || mongoose.model("Plan", planSchema);
+export default mongoose.model("Plan", planSchema);

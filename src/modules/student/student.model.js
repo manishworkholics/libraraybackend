@@ -70,11 +70,6 @@ const studentSchema = new mongoose.Schema(
       required: true
     },
 
-    timeSlot: {
-      type: String,
-      required: true
-    },
-
     course: {
       type: String,
       required: true

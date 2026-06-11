@@ -1,10 +1,10 @@
 import mongoose from "mongoose";
 import Library from "../commonmodel/Library.model.js";
 import Student from "../student/student.model.js";
-
+import LibrarySubscription from "../commonmodel/librarySubscription.model.js";
+import SubscriptionPayment from "../commonmodel/SubscriptionPayment.model.js";
 import bcrypt from "bcryptjs";
 import Admin from "../admin/admin.model.js";
-import PlatformSubscription from "../commonmodel/platformSubscription.model.js";
 import Expense from "../commonmodel/expense.model.js";
 import SuperAdmin from "../superadmin/superAdmin.model.js";
 import SupportComplaint from "../support/supportComplaint.model.js";
@@ -13,7 +13,6 @@ import Gallery from "../commonmodel/Gallery.model.js";
 import jwt from "jsonwebtoken";
 
 /* ================= SUPER ADMIN LOGIN ================= */
-
 export const superAdminLogin = async (req, res) => {
   try {
     const { email, password } = req.body;
@@ -59,7 +58,6 @@ export const superAdminLogin = async (req, res) => {
   }
 };
 
-
 /* ================= DASHBOARD ================= */
 
 export const getSuperAdminDashboard = async (req, res) => {
@@ -67,36 +65,51 @@ export const getSuperAdminDashboard = async (req, res) => {
 
     const totalLibraries = await Library.countDocuments();
 
-    const activeLibraries = await Library.countDocuments({
-      isActive: true
-    });
+    const activeLibraries =
+      await Library.countDocuments({
+        isActive: true
+      });
 
-    const expiredLibraries = await Library.countDocuments({
-      subscriptionExpiresAt: { $lt: new Date() }
-    });
+    const totalStudents =
+      await Student.countDocuments();
 
-    const totalStudents = await Student.countDocuments();
+    const expiredLibraries =
+      await LibrarySubscription.countDocuments({
+        status: "expired"
+      });
 
-    const revenueAgg = await PlatformSubscription.aggregate([
-      {
-        $match: { status: "Success" }
-      },
-      {
-        $group: {
-          _id: null,
-          totalRevenue: { $sum: "$amount" }
+    const revenueAgg =
+      await SubscriptionPayment.aggregate([
+        {
+          $match: {
+            status: "Success"
+          }
+        },
+        {
+          $group: {
+            _id: null,
+            totalRevenue: {
+              $sum: "$amount"
+            }
+          }
         }
-      }
-    ]);
+      ]);
 
-    const totalRevenue = revenueAgg?.[0]?.totalRevenue || 0;
+    const totalRevenue =
+      revenueAgg?.[0]?.totalRevenue || 0;
 
-    const pendingRenewals = await Library.countDocuments({
-      subscriptionExpiresAt: {
-        $lte: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
-      },
-      isActive: true
-    });
+    const next7Days = new Date();
+    next7Days.setDate(
+      next7Days.getDate() + 7
+    );
+
+    const pendingRenewals =
+      await LibrarySubscription.countDocuments({
+        status: "active",
+        endDate: {
+          $lte: next7Days
+        }
+      });
 
     res.json({
       totalLibraries,
@@ -108,15 +121,17 @@ export const getSuperAdminDashboard = async (req, res) => {
     });
 
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    console.log(error);
+
+    res.status(500).json({
+      message: error.message
+    });
   }
 };
 
 /* ================= CREATE LIBRARY ================= */
-
 export const createLibrary = async (req, res) => {
   try {
-
     const {
       name,
       email,
@@ -124,82 +139,152 @@ export const createLibrary = async (req, res) => {
       ownerEmail,
       address,
       phone,
-      password
+      password,
     } = req.body;
 
-    /* 🔎 Check Required Fields */
-    if (!name || !email || !ownerName || !ownerEmail || !phone || !password) {
+    // Required Fields Check
+    if (
+      !name ||
+      !email ||
+      !ownerName ||
+      !ownerEmail ||
+      !phone ||
+      !password
+    ) {
       return res.status(400).json({
-        message: "Please fill all required fields"
+        success: false,
+        message: "Please fill all required fields",
       });
     }
 
-    /* 📧 Library Email Duplicate Check */
-    const existingLibrary = await Library.findOne({ email });
+    // Email Validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+    if (!emailRegex.test(email)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid library email format",
+      });
+    }
+
+    if (!emailRegex.test(ownerEmail)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid owner email format",
+      });
+    }
+
+    // Phone Validation
+    if (!/^\d{10}$/.test(phone)) {
+      return res.status(400).json({
+        success: false,
+        message: "Mobile number must be 10 digits",
+      });
+    }
+
+    // Password Validation
+    if (password.length < 6) {
+      return res.status(400).json({
+        success: false,
+        message: "Password must be at least 6 characters",
+      });
+    }
+
+    // Check Library Email
+    const existingLibrary = await Library.findOne({
+      email: email.toLowerCase(),
+    });
 
     if (existingLibrary) {
       return res.status(400).json({
-        message: "Library already exists with this email"
+        success: false,
+        message: "Library already exists with this email",
       });
     }
 
-    /* 🔢 Generate Library Code */
+    // Check Owner Email
+    const existingOwner = await Admin.findOne({
+      email: ownerEmail.toLowerCase(),
+    });
+
+    if (existingOwner) {
+      return res.status(400).json({
+        success: false,
+        message: "Owner email already registered",
+      });
+    }
+
+    // Generate Library Code
     const lastLibrary = await Library.findOne({
-      libraryCode: { $exists: true }
-    }).sort({ libraryCode: -1 });
+      libraryCode: { $exists: true },
+    }).sort({ createdAt: -1 });
 
     let libraryCode = "LIB-0001";
 
-    if (lastLibrary) {
-
-      const lastNumber = parseInt(lastLibrary.libraryCode.split("-")[1]);
+    if (lastLibrary?.libraryCode) {
+      const lastNumber = parseInt(
+        lastLibrary.libraryCode.split("-")[1]
+      );
 
       const nextNumber = lastNumber + 1;
 
       libraryCode = `LIB-${String(nextNumber).padStart(4, "0")}`;
-
     }
 
-    /* 🏫 Create Library */
+    // Create Library
     const library = await Library.create({
       libraryCode,
-      name,
-      email,
-      ownerName,
-      ownerEmail,
-      address,
-      phone
+      name: name.trim(),
+      email: email.toLowerCase().trim(),
+      ownerName: ownerName.trim(),
+      ownerEmail: ownerEmail.toLowerCase().trim(),
+      address: address?.trim() || "",
+      phone,
+      isActive: true,
     });
 
-    /* 🔐 Hash Password */
+    // Hash Password
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    /* 👤 Create Owner Admin */
+    // Create Owner Admin
     const owner = await Admin.create({
-      name: ownerName,
-      email: ownerEmail,
+      name: ownerName.trim(),
+      email: ownerEmail.toLowerCase().trim(),
       password: hashedPassword,
       libraryId: library._id,
-      role: "owner"
+      role: "owner",
+      isActive: true,
     });
 
-    res.status(201).json({
+    return res.status(201).json({
+      success: true,
       message: "Library created successfully",
       library,
-      owner
+      owner: {
+        _id: owner._id,
+        name: owner.name,
+        email: owner.email,
+        role: owner.role,
+      },
     });
-
   } catch (error) {
+    console.error("Create Library Error:", error);
 
-    res.status(500).json({
-      message: error.message
+    if (error.code === 11000) {
+      return res.status(400).json({
+        success: false,
+        message: "Email already exists",
+      });
+    }
+
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Internal Server Error",
     });
-
   }
 };
 
 /* ================= GET ALL LIBRARIES ================= */
-
 export const getAllLibrary = async (req, res) => {
   try {
 
@@ -215,8 +300,214 @@ export const getAllLibrary = async (req, res) => {
   }
 };
 
-/* ================= TOGGLE LIBRARY STATUS ================= */
+export const getLibraryById = async (req, res) => {
+  try {
 
+    const library = await Library.findById(
+      req.params.libraryId
+    );
+
+    if (!library) {
+      return res.status(404).json({
+        success: false,
+        message: "Library not found"
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      data: library
+    });
+
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message
+    });
+  }
+};
+
+export const updateLibrary = async (req, res) => {
+  try {
+    const { libraryId } = req.params;
+
+    const {
+      name,
+      email,
+      ownerName,
+      ownerEmail,
+      address,
+      phone,
+      password,
+    } = req.body;
+
+    // Find Library
+    const library = await Library.findById(libraryId);
+
+    if (!library) {
+      return res.status(404).json({
+        success: false,
+        message: "Library not found",
+      });
+    }
+
+    // Email Validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+    if (email && !emailRegex.test(email)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid library email format",
+      });
+    }
+
+    if (ownerEmail && !emailRegex.test(ownerEmail)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid owner email format",
+      });
+    }
+
+    // Phone Validation
+    if (phone && !/^\d{10}$/.test(phone)) {
+      return res.status(400).json({
+        success: false,
+        message: "Mobile number must be 10 digits",
+      });
+    }
+
+    // Duplicate Library Email Check
+    if (email) {
+      const existingLibrary = await Library.findOne({
+        email: email.toLowerCase(),
+        _id: { $ne: libraryId },
+      });
+
+      if (existingLibrary) {
+        return res.status(400).json({
+          success: false,
+          message: "Library email already exists",
+        });
+      }
+    }
+
+    // Find Owner Admin
+    const owner = await Admin.findOne({
+      libraryId,
+      role: "owner",
+    });
+
+    // Duplicate Owner Email Check
+    if (ownerEmail) {
+      const existingOwner = await Admin.findOne({
+        email: ownerEmail.toLowerCase(),
+        _id: { $ne: owner?._id },
+      });
+
+      if (existingOwner) {
+        return res.status(400).json({
+          success: false,
+          message: "Owner email already exists",
+        });
+      }
+    }
+
+    // Update Library
+    library.name = name || library.name;
+    library.email = email
+      ? email.toLowerCase()
+      : library.email;
+    library.ownerName =
+      ownerName || library.ownerName;
+    library.ownerEmail = ownerEmail
+      ? ownerEmail.toLowerCase()
+      : library.ownerEmail;
+    library.address =
+      address !== undefined
+        ? address
+        : library.address;
+    library.phone = phone || library.phone;
+
+    await library.save();
+
+    // Update Owner Admin
+    if (owner) {
+      owner.name =
+        ownerName || owner.name;
+
+      owner.email = ownerEmail
+        ? ownerEmail.toLowerCase()
+        : owner.email;
+
+      // Update Password Only If Provided
+      if (
+        password &&
+        password.trim() !== ""
+      ) {
+        owner.password =
+          await bcrypt.hash(
+            password,
+            10
+          );
+      }
+
+      await owner.save();
+    }
+
+    res.status(200).json({
+      success: true,
+      message:
+        "Library updated successfully",
+      data: library,
+    });
+  } catch (error) {
+    console.error(
+      "Update Library Error:",
+      error
+    );
+
+    if (error.code === 11000) {
+      return res.status(400).json({
+        success: false,
+        message: "Email already exists",
+      });
+    }
+
+    res.status(500).json({
+      success: false,
+      message:
+        error.message ||
+        "Internal Server Error",
+    });
+  }
+};
+
+export const deleteLibrary = async (req, res) => {
+  try {
+    const library = await Library.findByIdAndDelete(
+      req.params.libraryId
+    );
+
+    if (!library) {
+      return res.status(404).json({
+        success: false,
+        message: "Library not found",
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "Library deleted successfully",
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+
+/* ================= TOGGLE LIBRARY STATUS ================= */
 export const toggleLibraryStatus = async (req, res) => {
   try {
 
@@ -243,133 +534,37 @@ export const toggleLibraryStatus = async (req, res) => {
   }
 };
 
-/* ================= RECORD PLATFORM PAYMENT ================= */
-
-export const recordPlatformPayment = async (req, res) => {
-  try {
-
-    const { libraryId } = req.params;
-
-    if (!mongoose.Types.ObjectId.isValid(libraryId)) {
-      return res.status(400).json({
-        message: "Invalid library ID"
-      });
-    }
-
-    const library = await Library.findById(libraryId);
-
-    if (!library) {
-      return res.status(404).json({
-        message: "Library not found"
-      });
-    }
-
-    const { planType, amount, paymentMode, startDate, endDate, status } = req.body;
-
-    const subscription = await PlatformSubscription.create({
-      libraryId,
-      planType,
-      amount: Number(amount),
-      paymentMode,
-      startDate: startDate ? new Date(startDate) : new Date(),
-      endDate: endDate ? new Date(endDate) : new Date(),
-      paymentDate: new Date(),
-      status: status || "Success"
-    });
-
-    // Update library subscription
-    library.subscriptionPlan = planType;
-    library.subscriptionStartDate = subscription.startDate;
-    library.subscriptionExpiresAt = subscription.endDate;
-    library.isActive = true;
-
-    await library.save();
-
-    res.status(201).json({
-      message: "Platform payment recorded successfully",
-      subscription
-    });
-
-  } catch (error) {
-
-    console.log("Platform Payment Error:", error);
-
-    res.status(500).json({
-      message: "Server error"
-    });
-  }
-};
-/* ================= PLATFORM REVENUE HISTORY ================= */
-
-export const getPlatformRevenueHistory = async (req, res) => {
-  try {
-
-    const { page = 1, limit = 10 } = req.query;
-
-    const data = await PlatformSubscription.find()
-      .populate("libraryId", "name")
-      .sort({ createdAt: -1 })
-      .skip((page - 1) * limit)
-      .limit(Number(limit));
-
-    const total = await PlatformSubscription.countDocuments();
-
-    res.json({
-      total,
-      page: Number(page),
-      pages: Math.ceil(total / limit),
-      data
-    });
-
-  } catch (error) {
-    res.status(500).json({ message: error.message });
-  }
-};
-
-/* ================= DELETE PLATFORM PAYMENT ================= */
-
-export const deletePlatformRevenue = async (req, res) => {
-  try {
-
-    const { id } = req.params;
-
-    const subscription = await PlatformSubscription.findById(id);
-
-    if (!subscription) {
-      return res.status(404).json({
-        message: "Record not found"
-      });
-    }
-
-    await subscription.deleteOne();
-
-    res.json({
-      message: "Deleted successfully"
-    });
-
-  } catch (error) {
-    res.status(500).json({ message: error.message });
-  }
-};
-
 /* ================= PLATFORM REVENUE DASHBOARD ================= */
-
 export const getPlatformRevenueDashboard = async (req, res) => {
   try {
 
-    const totalAgg = await PlatformSubscription.aggregate([
-      { $match: { status: "Success" } },
-      { $group: { _id: null, totalRevenue: { $sum: "$amount" } } }
+    const totalAgg = await SubscriptionPayment.aggregate([
+      {
+        $match: { status: "Success" }
+      },
+      {
+        $group: {
+          _id: null,
+          totalRevenue: {
+            $sum: "$amount"
+          }
+        }
+      }
     ]);
 
-    const totalRevenue = totalAgg?.[0]?.totalRevenue || 0;
-
-    const pendingAgg = await PlatformSubscription.aggregate([
-      { $match: { status: "Pending" } },
-      { $group: { _id: null, total: { $sum: "$amount" } } }
+    const pendingAgg = await SubscriptionPayment.aggregate([
+      {
+        $match: { status: "Pending" }
+      },
+      {
+        $group: {
+          _id: null,
+          total: {
+            $sum: "$amount"
+          }
+        }
+      }
     ]);
-
-    const pendingRevenue = pendingAgg?.[0]?.total || 0;
 
     const startOfMonth = new Date(
       new Date().getFullYear(),
@@ -377,42 +572,148 @@ export const getPlatformRevenueDashboard = async (req, res) => {
       1
     );
 
-    const monthlyAgg = await PlatformSubscription.aggregate([
+    const monthlyAgg = await SubscriptionPayment.aggregate([
       {
         $match: {
           status: "Success",
-          createdAt: { $gte: startOfMonth }
+          createdAt: {
+            $gte: startOfMonth
+          }
         }
       },
       {
         $group: {
           _id: null,
-          total: { $sum: "$amount" }
+          total: {
+            $sum: "$amount"
+          }
         }
       }
     ]);
 
-    const monthlyRevenue = monthlyAgg?.[0]?.total || 0;
-
-    const activeSubscriptions = await PlatformSubscription.countDocuments({
-      endDate: { $gte: new Date() },
-      status: "Success"
-    });
+    const activeSubscriptions =
+      await LibrarySubscription.countDocuments({
+        status: "active",
+        endDate: {
+          $gte: new Date()
+        }
+      });
 
     res.json({
-      totalRevenue,
-      pendingRevenue,
-      monthlyRevenue,
+      totalRevenue:
+        totalAgg?.[0]?.totalRevenue || 0,
+
+      pendingRevenue:
+        pendingAgg?.[0]?.total || 0,
+
+      monthlyRevenue:
+        monthlyAgg?.[0]?.total || 0,
+
       activeSubscriptions
     });
 
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    res.status(500).json({
+      message: error.message
+    });
   }
 };
 
-/* ================= EXPENSE ================= */
+export const getRevenueHistory = async (req, res) => {
+  try {
+    const page = Number(req.query.page) || 1;
+    const limit = Number(req.query.limit) || 10;
+    const skip = (page - 1) * limit;
 
+    const total = await SubscriptionPayment.countDocuments();
+
+    const revenues = await SubscriptionPayment.find()
+      .populate("libraryId", "name libraryCode")
+      .populate(
+        "planId",
+        "name maxSeats monthlyPrice quarterlyPrice halfYearlyPrice yearlyPrice"
+      )
+      .sort({ paymentDate: -1 })
+      .skip(skip)
+      .limit(limit);
+
+    res.status(200).json({
+      success: true,
+      total,
+      currentPage: page,
+      totalPages: Math.ceil(total / limit),
+      data: revenues,
+    });
+
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+
+export const getRevenueById = async (req, res) => {
+  try {
+    const revenue = await SubscriptionPayment.findById(
+      req.params.id
+    )
+      .populate("libraryId")
+      .populate("planId");
+
+    if (!revenue) {
+      return res.status(404).json({
+        success: false,
+        message: "Revenue not found",
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      data: revenue,
+    });
+
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+
+export const updateRevenue = async (req, res) => {
+  try {
+    const revenue =
+      await SubscriptionPayment.findByIdAndUpdate(
+        req.params.id,
+        req.body,
+        {
+          new: true,
+          runValidators: true,
+        }
+      );
+
+    if (!revenue) {
+      return res.status(404).json({
+        success: false,
+        message: "Revenue not found",
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "Revenue updated successfully",
+      data: revenue,
+    });
+
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+/* ================= EXPENSE ================= */
 export const addExpense = async (req, res) => {
   try {
 
@@ -485,19 +786,24 @@ export const deleteExpense = async (req, res) => {
     res.status(500).json({ message: error.message });
   }
 };
+
 /* ================= PROFIT DASHBOARD ================= */
 export const getProfitDashboard = async (req, res) => {
   try {
 
     // ✅ TOTAL REVENUE (subscription)
-    const revenueAgg = await PlatformSubscription.aggregate([
+    const revenueAgg = await SubscriptionPayment.aggregate([
       {
-        $match: { status: "Success" }
+        $match: {
+          status: "Success"
+        }
       },
       {
         $group: {
           _id: null,
-          totalRevenue: { $sum: "$amount" }
+          totalRevenue: {
+            $sum: "$amount"
+          }
         }
       }
     ]);
@@ -534,20 +840,35 @@ export const getProfitDashboard = async (req, res) => {
 export const getMonthlyProfitGraph = async (req, res) => {
   try {
 
-    const revenue = await PlatformSubscription.aggregate([
+    const revenue = await SubscriptionPayment.aggregate([
+      {
+        $match: {
+          status: "Success",
+        },
+      },
       {
         $group: {
           _id: {
             month: { $month: "$createdAt" },
-            year: { $year: "$createdAt" }
+            year: { $year: "$createdAt" },
           },
-          total: { $sum: "$amount" }
-        }
+          total: { $sum: "$amount" },
+        },
       },
-      { $sort: { "_id.year": 1, "_id.month": 1 } }
+      {
+        $sort: {
+          "_id.year": 1,
+          "_id.month": 1,
+        },
+      },
     ]);
 
     const expense = await Expense.aggregate([
+      {
+        $match: {
+          type: "platform"
+        }
+      },
       {
         $group: {
           _id: {
@@ -577,10 +898,13 @@ export const getLast12MonthsRevenue = async (req, res) => {
     twelveMonthsAgo.setMonth(twelveMonthsAgo.getMonth() - 11);
     twelveMonthsAgo.setDate(1);
 
-    const revenue = await PlatformSubscription.aggregate([
+    const revenue = await SubscriptionPayment.aggregate([
       {
         $match: {
-          createdAt: { $gte: twelveMonthsAgo }
+          createdAt: {
+            $gte: twelveMonthsAgo
+          },
+          status: "Success"
         }
       },
       {
@@ -589,11 +913,16 @@ export const getLast12MonthsRevenue = async (req, res) => {
             year: { $year: "$createdAt" },
             month: { $month: "$createdAt" }
           },
-          total: { $sum: "$amount" }
+          total: {
+            $sum: "$amount"
+          }
         }
       },
       {
-        $sort: { "_id.year": 1, "_id.month": 1 }
+        $sort: {
+          "_id.year": 1,
+          "_id.month": 1
+        }
       }
     ]);
 
@@ -609,151 +938,54 @@ export const getLast12MonthsRevenue = async (req, res) => {
     res.status(500).json({ message: error.message });
   }
 };
-export const getLibraryWiseRevenue = async (req, res) => {
+export const getLibraryWiseRevenue = async (
+  req,
+  res
+) => {
   try {
 
-    const revenue = await PlatformSubscription.aggregate([
-      {
-        $group: {
-          _id: "$libraryId",
-          totalRevenue: { $sum: "$amount" }
+    const data =
+      await SubscriptionPayment.aggregate([
+        {
+          $match: {
+            status: "Success"
+          }
+        },
+        {
+          $group: {
+            _id: "$libraryId",
+            totalRevenue: {
+              $sum: "$amount"
+            }
+          }
+        },
+        {
+          $lookup: {
+            from: "libraries",
+            localField: "_id",
+            foreignField: "_id",
+            as: "library"
+          }
+        },
+        {
+          $unwind: "$library"
+        },
+        {
+          $project: {
+            libraryName:
+              "$library.name",
+            libraryCode:
+              "$library.libraryCode",
+            totalRevenue: 1
+          }
         }
-      },
-      {
-        $lookup: {
-          from: "libraries",
-          localField: "_id",
-          foreignField: "_id",
-          as: "library"
-        }
-      },
-      { $unwind: "$library" },
-      {
-        $project: {
-          libraryName: "$library.name",
-          totalRevenue: 1
-        }
-      }
-    ]);
+      ]);
 
-    res.json(revenue);
-
-  } catch (error) {
-    res.status(500).json({ message: error.message });
-  }
-};
-export const renewSubscription = async (req, res) => {
-  try {
-
-    const { libraryId } = req.params;
-
-    const library = await Library.findById(libraryId);
-
-    if (!library) {
-      return res.status(404).json({
-        message: "Library not found"
-      });
-    }
-
-    const now = new Date();
-    let newExpiry = new Date();
-
-    switch (library.subscriptionPlan) {
-      case "monthly":
-        newExpiry.setMonth(newExpiry.getMonth() + 1);
-        break;
-
-      case "threeMonths":
-        newExpiry.setMonth(newExpiry.getMonth() + 3);
-        break;
-
-      case "sixMonths":
-        newExpiry.setMonth(newExpiry.getMonth() + 6);
-        break;
-
-      case "yearly":
-        newExpiry.setFullYear(newExpiry.getFullYear() + 1);
-        break;
-
-      default:
-        return res.status(400).json({
-          message: "Invalid subscription plan"
-        });
-    }
-
-    library.subscriptionStartDate = now;
-    library.subscriptionExpiresAt = newExpiry;
-    library.isActive = true;
-
-    await library.save();
-
-    res.json({
-      message: "Subscription renewed successfully",
-      library
-    });
+    res.json(data);
 
   } catch (error) {
     res.status(500).json({
       message: error.message
-    });
-  }
-};
-export const setManualSubscription = async (req, res) => {
-  try {
-
-    const { libraryId } = req.params;
-
-    const {
-      planType,
-      amount,
-      startDate,
-      endDate,
-      paymentMode
-    } = req.body;
-
-    if (!libraryId) {
-      return res.status(400).json({
-        message: "Library ID is required"
-      });
-    }
-
-    if (!planType || !startDate || !endDate) {
-      return res.status(400).json({
-        message: "Plan type, start date and end date are required"
-      });
-    }
-
-    // Find library
-    const library = await Library.findById(libraryId);
-
-    if (!library) {
-      return res.status(404).json({
-        message: "Library not found"
-      });
-    }
-
-    // Update subscription
-    library.subscription = {
-      planType,
-      amount,
-      startDate,
-      endDate,
-      paymentMode: paymentMode || "manual",
-      status: "active"
-    };
-
-    await library.save();
-
-    res.json({
-      message: "Manual subscription set successfully",
-      subscription: library.subscription
-    });
-
-  } catch (error) {
-    console.error(error);
-
-    res.status(500).json({
-      message: "Server error"
     });
   }
 };

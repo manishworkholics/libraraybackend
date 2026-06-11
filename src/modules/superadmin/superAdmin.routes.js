@@ -4,11 +4,11 @@ import superAdminAuth from "../../middlewares/superAdminAuth.middleware.js";
 import {
     getSuperAdminDashboard,
     createLibrary,
+    getAllLibrary,
+    getLibraryById,
+    updateLibrary,
+    deleteLibrary,
     toggleLibraryStatus,
-    setManualSubscription,
-    renewSubscription,
-    recordPlatformPayment,
-    getPlatformRevenueHistory,
     getPlatformRevenueDashboard,
     getProfitDashboard,
     getMonthlyProfitGraph,
@@ -17,8 +17,10 @@ import {
     addExpense,
     getExpenses,
     deleteExpense,
+    getRevenueHistory,
+    getRevenueById,
+    updateRevenue,
     superAdminLogin,
-    getAllLibrary,
     createSuccessStory,
     getSuccessStories,
     updateSuccessStory,
@@ -49,16 +51,29 @@ router.get("/dashboard", superAdminAuth, getSuperAdminDashboard);
 router.get("/get-all-library", superAdminAuth, getAllLibrary);
 
 router.post("/create-library", superAdminAuth, createLibrary);
+router.get(
+    "/library/:libraryId",
+    superAdminAuth,
+    getLibraryById
+);
 
-router.put("/library/:libraryId", superAdminAuth, toggleLibraryStatus);
+router.put(
+    "/library/:libraryId",
+    superAdminAuth,
+    updateLibrary
+);
 
-router.put("/manual-subscription/:libraryId", superAdminAuth, setManualSubscription);
-
-router.put("/renew/:libraryId", superAdminAuth, renewSubscription);
-
-router.post("/platform-revenue/:libraryId", superAdminAuth, recordPlatformPayment);
-
-router.get("/platform-revenue/history", superAdminAuth, getPlatformRevenueHistory);
+router.delete(
+    "/library/:libraryId",
+    superAdminAuth,
+    deleteLibrary
+);
+router.post(
+  "/subscription/activate",
+  superAdminAuth,
+  activatePlanForLibrary
+);
+router.put("/library/:libraryId/status", superAdminAuth, toggleLibraryStatus);
 router.get("/platform-revenue/dashboard", superAdminAuth, getPlatformRevenueDashboard);
 
 router.get("/revenue-12-months", superAdminAuth, getLast12MonthsRevenue);
@@ -70,7 +85,23 @@ router.get("/library-wise-revenue", superAdminAuth, getLibraryWiseRevenue);
 router.post("/platform-expenses", superAdminAuth, addExpense);
 router.get("/platform-expenses", superAdminAuth, getExpenses);
 router.delete("/platform-expenses/:id", superAdminAuth, deleteExpense);
+router.get(
+    "/platform-revenue/history",
+    superAdminAuth,
+    getRevenueHistory
+);
 
+router.get(
+    "/platform-revenue/:id",
+    superAdminAuth,
+    getRevenueById
+);
+
+router.put(
+    "/platform-revenue/:id",
+    superAdminAuth,
+    updateRevenue
+);
 router.get("/profit-dashboard", superAdminAuth, getProfitDashboard);
 router.get("/profit-graph", getMonthlyProfitGraph);
 
@@ -78,8 +109,6 @@ router.post("/plans", superAdminAuth, createPlan);
 router.get("/plans", superAdminAuth, getPlans);
 router.put("/plans/:id", superAdminAuth, updatePlan);
 router.delete("/plans/:id", superAdminAuth, deletePlan);
-
-router.post("/subscription/activate", superAdminAuth, activatePlanForLibrary);
 
 
 router.post("/success-story", superAdminAuth, createSuccessStory);

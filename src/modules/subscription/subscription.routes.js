@@ -2,28 +2,114 @@ import express from "express";
 import superAdminAuth from "../../middlewares/superAdminAuth.middleware.js";
 
 import {
-  activatePlanForLibrary,
   createPlan,
   getPlans,
+  getPlanById,
   updatePlan,
-  deletePlan
+  deletePlan,
+  togglePlanStatus,
+  activatePlanForLibrary,
+  getLibrarySubscription,
+  getSubscriptionHistory,
+  getAllRenewals,
+  getExpiringSoon,
+  getRenewalDashboard,
+  getMonthlyRenewalSheet
 } from "./subscription.controller.js";
 
 const router = express.Router();
 
-// create new plan
-router.post("/plan", superAdminAuth, createPlan);
+/* ==========================
+   PLAN ROUTES
+========================== */
 
-// get all plans
-router.get("/plan", getPlans);
+// Create Plan
+router.post(
+  "/plan",
+  superAdminAuth,
+  createPlan
+);
 
-// update plan
-router.put("/plan/:id", superAdminAuth, updatePlan);
+// Get All Plans
+router.get(
+  "/plan",
+  getPlans
+);
 
-// delete plan
-router.delete("/plan/:id", superAdminAuth, deletePlan);
+// Get Single Plan
+router.get(
+  "/plan/:id",
+  getPlanById
+);
 
-// activate plan for library
-router.post("/activate", superAdminAuth, activatePlanForLibrary);
+// Update Plan
+router.put(
+  "/plan/:id",
+  superAdminAuth,
+  updatePlan
+);
+
+// Update Plan
+router.delete(
+  "/plan/:id",
+  superAdminAuth,
+  deletePlan
+);
+
+// Activate/Deactivate Plan
+router.patch(
+  "/plan/:id/status",
+  superAdminAuth,
+  togglePlanStatus
+);
+
+/* ==========================
+   SUBSCRIPTION ROUTES
+========================== */
+
+// Activate Plan For Library
+router.post(
+  "/activate",
+  superAdminAuth,
+  activatePlanForLibrary
+);
+
+// Current Active Subscription
+router.get(
+  "/current/:libraryId",
+  superAdminAuth,
+  getLibrarySubscription
+);
+
+// Subscription History
+router.get(
+  "/history/:libraryId",
+  superAdminAuth,
+  getSubscriptionHistory
+);
+router.get(
+  "/renewals",
+  superAdminAuth,
+  getAllRenewals
+);
+
+router.get(
+  "/expiring-soon",
+  superAdminAuth,
+  getExpiringSoon
+);
+
+router.get(
+  "/renewal-dashboard",
+  superAdminAuth,
+  getRenewalDashboard
+);
+
+router.get(
+  "/monthly-renewals",
+  superAdminAuth,
+  getMonthlyRenewalSheet
+);
+
 
 export default router;
