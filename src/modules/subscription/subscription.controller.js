@@ -306,7 +306,6 @@ export const activatePlanForLibrary = async (req, res) => {
       status = "Success"
     } = req.body;
 
-    ```
 const plan = await Plan.findById(planId);
 
 if (!plan) {
@@ -419,17 +418,13 @@ return res.status(201).json({
   payment,
   subscription
 });
-```
 
   } catch (error) {
     console.error(error);
-
-    ```
 return res.status(500).json({
   success: false,
   message: error.message
 });
-```
 
   }
 };
