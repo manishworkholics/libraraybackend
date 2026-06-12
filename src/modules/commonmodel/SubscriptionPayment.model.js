@@ -44,10 +44,10 @@ const subscriptionPaymentSchema = new mongoose.Schema(
     status: {
       type: String,
       enum: [
-        "Success",
-        "Pending"
+        "Active",
+        "Expired",
       ],
-      default: "Success"
+      default: "Active"
     },
 
     receivedBy: {
