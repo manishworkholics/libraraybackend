@@ -683,33 +683,91 @@ export const getRevenueById = async (req, res) => {
 
 export const updateRevenue = async (req, res) => {
   try {
+
     const revenue =
       await SubscriptionPayment.findByIdAndUpdate(
         req.params.id,
-        req.body,
+        {
+          amount: req.body.amount,
+          paymentMode: req.body.paymentMode,
+          status: req.body.status,
+          durationType: req.body.durationType
+        },
         {
           new: true,
-          runValidators: true,
+          runValidators: true
         }
       );
 
     if (!revenue) {
       return res.status(404).json({
         success: false,
-        message: "Revenue not found",
+        message: "Revenue not found"
       });
     }
 
-    res.status(200).json({
+    const subscription =
+      await LibrarySubscription.findOne({
+        libraryId: revenue.libraryId,
+        status: "active"
+      });
+
+    if (subscription && req.body.durationType) {
+
+      subscription.durationType =
+        req.body.durationType;
+
+      let durationDays = 0;
+
+      switch (req.body.durationType) {
+
+        case "Monthly":
+          durationDays = 30;
+          break;
+
+        case "Quarterly":
+          durationDays = 90;
+          break;
+
+        case "HalfYearly":
+          durationDays = 180;
+          break;
+
+        case "Yearly":
+          durationDays = 365;
+          break;
+
+        default:
+          durationDays = 30;
+      }
+
+      // Recalculate end date from start date
+      const newEndDate = new Date(
+        subscription.startDate
+      );
+
+      newEndDate.setDate(
+        newEndDate.getDate() + durationDays
+      );
+
+      subscription.endDate = newEndDate;
+
+      await subscription.save();
+    }
+
+    return res.status(200).json({
       success: true,
       message: "Revenue updated successfully",
-      data: revenue,
+      data: revenue
     });
 
   } catch (error) {
-    res.status(500).json({
+
+    console.log(error);
+
+    return res.status(500).json({
       success: false,
-      message: error.message,
+      message: error.message
     });
   }
 };
