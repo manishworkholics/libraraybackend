@@ -192,7 +192,7 @@ const feesSchema = new mongoose.Schema(
         String
 
     },
-    
+
 
   },
 
@@ -207,80 +207,48 @@ const feesSchema = new mongoose.Schema(
 
 // ✅ AUTO CALCULATIONS
 feesSchema.pre(
-
   "save",
-
   function (next) {
 
-    // ✅ TOTAL AMOUNT
+    // TOTAL AMOUNT
     this.totalAmount =
+      Number(this.registrationFees || 0) +
+      Number(this.monthlyFees || 0);
 
-      Number(
-        this.registrationFees || 0
-      ) +
-
-      Number(
-        this.monthlyFees || 0
-      );
-
-    // ✅ START DATE CHECK
     if (!this.startDate) {
-
       return next();
-
     }
 
-    // ✅ END DATE CALCULATION
-    const start =
-      new Date(this.startDate);
-
-    const end =
-      new Date(start);
+    const start = new Date(this.startDate);
+    const end = new Date(start);
 
     switch (this.planType) {
 
       case "monthly":
-
-        end.setMonth(
-          end.getMonth() + 1
-        );
-
+        end.setMonth(end.getMonth() + 1);
         break;
 
       case "quarterly":
-
-        end.setMonth(
-          end.getMonth() + 3
-        );
-
+        end.setMonth(end.getMonth() + 3);
         break;
 
       case "halfYearly":
-
-        end.setMonth(
-          end.getMonth() + 6
-        );
-
+        end.setMonth(end.getMonth() + 6);
         break;
 
       case "yearly":
-
-        end.setFullYear(
-          end.getFullYear() + 1
-        );
-
+        end.setFullYear(end.getFullYear() + 1);
         break;
 
       default:
         break;
-
     }
 
     this.endDate = end;
 
-
+    // ✅ IMPORTANT
+    next();
   }
-
 );
 
 export default
