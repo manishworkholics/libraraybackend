@@ -790,7 +790,7 @@ export const renewFees = async (req, res) => {
       message: error.message,
       error:
         process.env.NODE_ENV ===
-        "development"
+          "development"
           ? error.stack
           : undefined
     });
@@ -799,13 +799,11 @@ export const renewFees = async (req, res) => {
 export const getRenewalList = async (req, res) => {
   try {
     const { libraryId } = req.user;
-
     const { month, year } = req.query;
 
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
-    // Selected month start
     const selectedMonthDate = new Date(
       Number(year),
       Number(month) - 1,
@@ -813,13 +811,13 @@ export const getRenewalList = async (req, res) => {
     );
 
     const fees = await Fees.find({
-      libraryId,
+      libraryId
     })
       .populate({
         path: "studentId",
         match: { status: "active" },
         select:
-          "enrollmentNumber name phone studyHours amount",
+          "enrollmentNumber name phone studyHours"
       })
       .sort({ createdAt: -1 });
 
@@ -837,24 +835,10 @@ export const getRenewalList = async (req, res) => {
           1
         );
 
-        // Check if already renewed
-        const newerRecord = validFees.find(
-          (item) =>
-            item.studentId?._id.toString() ===
-            f.studentId._id.toString() &&
-            new Date(item.createdAt) >
-            new Date(f.createdAt)
-        );
-
-        // Hide old renewed records
-        if (newerRecord) {
-          return false;
-        }
-
-        // Show selected month + previous pending months
         return feeMonthDate <= selectedMonthDate;
       })
       .map((f) => {
+
         const endDate = new Date(f.endDate);
         endDate.setHours(0, 0, 0, 0);
 
@@ -864,60 +848,91 @@ export const getRenewalList = async (req, res) => {
           diffTime / (1000 * 60 * 60 * 24)
         );
 
-        let status = "completed";
+        // Check renewal exists after this record
+        const newerRecord = validFees.find(
+          (item) =>
+            item.studentId?._id.toString() ===
+            f.studentId._id.toString() &&
+            new Date(item.createdAt) >
+            new Date(f.createdAt)
+        );
 
-        if (diffDays < 0) {
-          // Expired
+        let status = "warning";
+
+        if (newerRecord) {
+          status = "completed";
+        } else if (diffDays < 0) {
           status = "pending";
         } else if (diffDays <= 3) {
-          // Expiring soon
-          status = "warning";
-        } else {
-          // Upcoming
           status = "warning";
         }
 
         return {
           _id: f._id,
+
           studentId: f.studentId._id,
+
           enrollmentNumber:
             f.studentId.enrollmentNumber,
+
           name: f.studentId.name,
+
           phone: f.studentId.phone,
+
           studyHours:
             f.studentId.studyHours || "-",
-          amount: f.monthlyFees || 0,
+
+          amount:
+            f.monthlyFees || 0,
+
           monthlyFees:
             f.monthlyFees || 0,
+
+          paidAmount:
+            f.paidAmount || 0,
+
           dueAmount:
             f.dueAmount || 0,
-          paidAmount: f.paidAmount || 0,
+
           totalAmount:
             f.totalAmount || 0,
+
           lastRenewalDate:
             f.endDate,
+
           renewDate:
             f.paymentDate,
+
           nextRenewDate:
-            f.endDate,
+            newerRecord
+              ? newerRecord.endDate
+              : f.endDate,
+
           status,
+
           canRenew:
-            status === "warning" ||
-            status === "pending",
+            !newerRecord &&
+            (
+              status === "warning" ||
+              status === "pending"
+            )
         };
       });
 
     res.json({
       success: true,
       count: result.length,
-      data: result,
+      data: result
     });
+
   } catch (error) {
+
     console.error(error);
 
     res.status(500).json({
       success: false,
-      message: error.message,
+      message: error.message
     });
+
   }
 };
