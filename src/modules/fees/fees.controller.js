@@ -3,7 +3,6 @@ import Student from "../student/student.model.js";
 
 /* Add Fees Entry */
 export const addFees = async (req, res) => {
-
   try {
 
     const {
@@ -712,11 +711,6 @@ export const renewFees = async (req, res) => {
         0
       );
 
-    const paymentStatus =
-      newDueAmount > 0
-        ? "partial"
-        : "paid";
-
     const renewedFees =
       await Fees.create({
         studentId:
@@ -804,11 +798,8 @@ export const getRenewalList = async (req, res) => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
-    const selectedMonthDate = new Date(
-      Number(year),
-      Number(month) - 1,
-      1
-    );
+    const selectedMonth = Number(month);
+    const selectedYear = Number(year);
 
     const fees = await Fees.find({
       libraryId
@@ -829,55 +820,82 @@ export const getRenewalList = async (req, res) => {
       .filter((f) => {
         const endDate = new Date(f.endDate);
 
-        const feeMonthDate = new Date(
-          endDate.getFullYear(),
-          endDate.getMonth(),
-          1
-        );
+        const feeMonth =
+          endDate.getMonth() + 1;
 
-        return feeMonthDate <= selectedMonthDate;
+        const feeYear =
+          endDate.getFullYear();
+
+        // Current selected month
+        if (
+          feeMonth === selectedMonth &&
+          feeYear === selectedYear
+        ) {
+          return true;
+        }
+
+        // Previous pending months
+        if (
+          feeYear < selectedYear ||
+          (
+            feeYear === selectedYear &&
+            feeMonth < selectedMonth
+          )
+        ) {
+          return true;
+        }
+
+        // Future months hide
+        return false;
       })
       .map((f) => {
 
         const endDate = new Date(f.endDate);
         endDate.setHours(0, 0, 0, 0);
 
-        const diffTime = endDate - today;
+        const diffTime =
+          endDate - today;
 
         const diffDays = Math.ceil(
-          diffTime / (1000 * 60 * 60 * 24)
+          diffTime /
+          (1000 * 60 * 60 * 24)
         );
 
-        // Check renewal exists after this record
-        const newerRecord = validFees.find(
-          (item) =>
-            item.studentId?._id.toString() ===
-            f.studentId._id.toString() &&
-            new Date(item.createdAt) >
-            new Date(f.createdAt)
-        );
+        const newerRecord =
+          validFees.find(
+            (item) =>
+              item.studentId?._id.toString() ===
+              f.studentId._id.toString() &&
+              new Date(item.createdAt) >
+              new Date(f.createdAt)
+          );
 
         let status = "warning";
 
         if (newerRecord) {
           status = "completed";
-        } else if (diffDays < 0) {
+        }
+        else if (diffDays < 0) {
           status = "pending";
-        } else if (diffDays <= 3) {
+        }
+        else {
           status = "warning";
         }
 
         return {
           _id: f._id,
 
-          studentId: f.studentId._id,
+          studentId:
+            f.studentId._id,
 
           enrollmentNumber:
             f.studentId.enrollmentNumber,
 
-          name: f.studentId.name,
+          name:
+            f.studentId.name,
 
-          phone: f.studentId.phone,
+          phone:
+            f.studentId.phone,
 
           studyHours:
             f.studentId.studyHours || "-",
@@ -933,6 +951,5 @@ export const getRenewalList = async (req, res) => {
       success: false,
       message: error.message
     });
-
   }
 };

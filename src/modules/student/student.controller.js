@@ -7,7 +7,6 @@ import bcrypt from "bcryptjs";
 
 /* Create Student */
 export const createStudent = async (req, res) => {
-
   try {
 
     const {
@@ -224,8 +223,7 @@ export const createStudent = async (req, res) => {
     const student =
       await Student.create({
 
-        name:
-          name.trim(),
+        name: name.trim(),
 
         fathername:
           fathername ||
@@ -237,9 +235,9 @@ export const createStudent = async (req, res) => {
         gender,
 
         email:
-          email
+          email?.trim()
             ? email.toLowerCase()
-            : "",
+            : undefined,
 
         phone,
 
