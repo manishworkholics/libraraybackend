@@ -14,7 +14,7 @@ export const addFees = async (req, res) => {
 
       monthlyFees,
 
-      dueAmount,
+      paidAmount,
 
       planType,
 
@@ -82,6 +82,19 @@ export const addFees = async (req, res) => {
 
     }
 
+    // ✅ CALCULATIONS
+    const totalAmount =
+
+      Number(registrationFees || 0) +
+
+      Number(monthlyFees || 0);
+
+    const finalPaidAmount =
+      Number(paidAmount || 0);
+
+    const dueAmount =
+      totalAmount - finalPaidAmount;
+
     const record =
       await Fees.create({
 
@@ -93,34 +106,27 @@ export const addFees = async (req, res) => {
         monthlyFees:
           Number(monthlyFees || 0),
 
-        totalAmount:
+        totalAmount,
 
-          Number(registrationFees || 0) +
-
-          Number(monthlyFees || 0),
+        paidAmount:
+          finalPaidAmount,
 
         dueAmount:
-          Number(dueAmount || 0),
+          dueAmount > 0
+            ? dueAmount
+            : 0,
 
         planType,
 
         paymentDate:
-
           new Date(
-
             new Date().toLocaleString(
-
               "en-US",
-
               {
-
                 timeZone:
                   "Asia/Kolkata"
-
               }
-
             )
-
           ),
 
         paymentMode,
@@ -478,134 +484,116 @@ export const getRevenueStats = async (req, res) => {
 
 };
 
-export const updateFees =
-  async (req, res) => {
+export const updateFees = async (req, res) => {
 
-    try {
+  try {
 
-      const {
-        libraryId
-      } = req.user;
+    const { libraryId } = req.user;
 
-      const {
-        id
-      } = req.params;
+    const { id } = req.params;
 
-      const {
+    const {
 
-        registrationFees,
+      registrationFees,
 
-        monthlyFees,
+      monthlyFees,
 
-        dueAmount,
+      paidAmount,
 
-        studyHours,
+      dueAmount,
 
-        paymentMode,
+      studyHours,
 
-        planType,
+      paymentMode,
 
-        startDate,
+      planType,
 
-        endDate
+      startDate,
 
-      } = req.body;
+      endDate
 
-      const fees =
-        await Fees.findOne({
+    } = req.body;
 
-          _id: id,
+    const fees = await Fees.findOne({
 
-          libraryId
+      _id: id,
 
-        });
+      libraryId
 
-      if (!fees) {
+    });
 
-        return res.status(404).json({
+    if (!fees) {
 
-          success: false,
-
-          message:
-            "Fees record not found"
-
-        });
-
-      }
-
-      fees.registrationFees =
-        Number(
-          registrationFees || 0
-        );
-
-      fees.monthlyFees =
-        Number(
-          monthlyFees || 0
-        );
-
-      fees.totalAmount =
-
-        Number(
-          registrationFees || 0
-        ) +
-
-        Number(
-          monthlyFees || 0
-        );
-
-      fees.dueAmount =
-        Number(dueAmount || 0);
-
-      fees.studyHours =
-        String(studyHours || "");
-
-      fees.paymentMode =
-        paymentMode;
-
-      fees.planType =
-        planType;
-
-      fees.startDate =
-        startDate;
-
-      if (
-        planType === "custom"
-      ) {
-
-        fees.endDate =
-          endDate;
-
-      }
-
-      await fees.save();
-
-      res.json({
-
-        success: true,
-
-        message:
-          "Revenue updated successfully",
-
-        fees
-
-      });
-
-    } catch (error) {
-
-      console.error(error);
-
-      res.status(500).json({
+      return res.status(404).json({
 
         success: false,
 
-        message:
-          error.message
+        message: "Fees record not found"
 
       });
 
     }
 
-  };
+    fees.registrationFees =
+      Number(registrationFees || 0);
+
+    fees.monthlyFees =
+      Number(monthlyFees || 0);
+
+    fees.paidAmount =
+      Number(paidAmount || 0);
+
+    fees.dueAmount =
+      Number(dueAmount || 0);
+
+    fees.studyHours =
+      String(studyHours || "");
+
+    fees.paymentMode =
+      paymentMode;
+
+    fees.planType =
+      planType;
+
+    fees.startDate =
+      startDate;
+
+    if (planType === "custom") {
+
+      fees.endDate =
+        endDate;
+
+    }
+
+    await fees.save();
+
+    res.json({
+
+      success: true,
+
+      message:
+        "Revenue updated successfully",
+
+      fees
+
+    });
+
+  } catch (error) {
+
+    console.error(error);
+
+    res.status(500).json({
+
+      success: false,
+
+      message:
+        error.message
+
+    });
+
+  }
+
+};
 
 export const deleteFees = async (req, res) => {
   try {
@@ -636,15 +624,14 @@ const formatLocalDate = (date) => {
 
 export const renewFees = async (req, res) => {
   try {
-    console.log("STEP 1");
-
     const { id } = req.params;
 
     const {
       duration,
       renewType,
       studyHours,
-      amount
+      amount,
+      paidAmount
     } = req.body;
 
     const planTypeByDuration = {
@@ -669,13 +656,9 @@ export const renewFees = async (req, res) => {
       libraryId: req.user.libraryId
     }).populate({
       path: "studentId",
-      match: {
-        status: "active"
-      },
+      match: { status: "active" },
       select: "_id status studyHours"
     });
-
-    console.log("STEP 2", currentFees);
 
     if (!currentFees || !currentFees.studentId) {
       return res.status(404).json({
@@ -684,14 +667,11 @@ export const renewFees = async (req, res) => {
       });
     }
 
+    // Update Study Hours
     await Student.findByIdAndUpdate(
       currentFees.studentId._id,
-      {
-        studyHours
-      }
+      { studyHours }
     );
-
-    console.log("STEP 3");
 
     const paymentDate = new Date();
 
@@ -705,9 +685,6 @@ export const renewFees = async (req, res) => {
       renewalStartDate = new Date();
     }
 
-    const renewalAmount =
-      Number(amount || 0);
-
     const renewalEndDate =
       new Date(renewalStartDate);
 
@@ -716,23 +693,29 @@ export const renewFees = async (req, res) => {
       Number(duration)
     );
 
-    console.log("CREATE DATA =>", {
-      studentId:
-        currentFees.studentId._id,
-      libraryId:
-        req.user.libraryId,
-      planType,
-      paymentDate,
-      paymentMode:
-        currentFees.paymentMode,
-      startDate:
-        renewalStartDate,
-      endDate:
-        renewalEndDate,
-      studyHours,
-      monthlyFees:
-        renewalAmount
-    });
+    // Amount Calculations
+    const renewalAmount =
+      Number(amount || 0);
+
+    const oldDueAmount =
+      Number(currentFees.dueAmount || 0);
+
+    const paid =
+      Number(paidAmount || 0);
+
+    const totalAmount =
+      renewalAmount + oldDueAmount;
+
+    const newDueAmount =
+      Math.max(
+        totalAmount - paid,
+        0
+      );
+
+    const paymentStatus =
+      newDueAmount > 0
+        ? "partial"
+        : "paid";
 
     const renewedFees =
       await Fees.create({
@@ -747,11 +730,14 @@ export const renewFees = async (req, res) => {
         monthlyFees:
           renewalAmount,
 
-        totalAmount:
-          renewalAmount,
+        totalAmount,
+
+        paidAmount: paid,
 
         dueAmount:
-          currentFees.dueAmount || 0,
+          newDueAmount,
+
+        paymentStatus,
 
         planType,
 
@@ -770,15 +756,11 @@ export const renewFees = async (req, res) => {
         studyHours
       });
 
-    console.log(
-      "STEP 4",
-      renewedFees
-    );
-
     return res.status(200).json({
       success: true,
       message:
         "Renewal updated successfully",
+
       data: {
         _id: renewedFees._id,
         studentId:
@@ -787,6 +769,11 @@ export const renewFees = async (req, res) => {
           renewedFees.paymentDate,
         nextRenewDate:
           renewedFees.endDate,
+        totalAmount,
+        paidAmount: paid,
+        dueAmount:
+          newDueAmount,
+        paymentStatus,
         status: "completed"
       }
     });
@@ -803,256 +790,134 @@ export const renewFees = async (req, res) => {
       message: error.message,
       error:
         process.env.NODE_ENV ===
-          "development"
+        "development"
           ? error.stack
           : undefined
     });
-
   }
 };
-
 export const getRenewalList = async (req, res) => {
-
   try {
+    const { libraryId } = req.user;
 
-    const { libraryId } =
-      req.user;
+    const { month, year } = req.query;
 
-    const {
-      month,
-      year
-    } = req.query;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
 
-    // ✅ TODAY
-    const today =
-      new Date();
-
-    today.setHours(
-      0,
-      0,
-      0,
-      0
+    // Selected month start
+    const selectedMonthDate = new Date(
+      Number(year),
+      Number(month) - 1,
+      1
     );
 
-    // ✅ GET ALL FEES
-    const fees =
-      await Fees.find({
-
-        libraryId
-
+    const fees = await Fees.find({
+      libraryId,
+    })
+      .populate({
+        path: "studentId",
+        match: { status: "active" },
+        select:
+          "enrollmentNumber name phone studyHours amount",
       })
-
-        .populate({
-
-          path: "studentId",
-
-          match: {
-            status: "active"
-          },
-
-          select:
-            "enrollmentNumber name phone studyHours amount"
-
-        })
-
-        .sort({
-
-          createdAt: -1
-
-        });
-
-    // ✅ VALID RECORDS
-    const validFees =
-      fees.filter(
-
-        (f) =>
-
-          f.studentId &&
-
-          f.endDate
-
-      );
-
-    // ✅ FINAL RESULT
-    const result =
-      validFees
-
-        // ✅ FILTER BY END DATE
-        .filter((f) => {
-
-          const endDate =
-            new Date(f.endDate);
-
-          return (
-
-            endDate.getMonth() + 1 ===
-            Number(month)
-
-            &&
-
-            endDate.getFullYear() ===
-            Number(year)
-
-          );
-
-        })
-
-        .map((f) => {
-
-          const endDate =
-            new Date(f.endDate);
-
-          endDate.setHours(
-            0,
-            0,
-            0,
-            0
-          );
-
-          // ✅ DAYS LEFT
-          const diffTime =
-            endDate - today;
-
-          const diffDays =
-            Math.ceil(
-
-              diffTime /
-
-              (1000 * 60 * 60 * 24)
-
-            );
-
-          // ✅ CHECK IF RENEWED
-          const newerRecord =
-            validFees.find(
-
-              (item) =>
-
-                item.studentId?._id.toString() ===
-                f.studentId._id.toString()
-
-                &&
-
-                new Date(item.createdAt) >
-                new Date(f.createdAt)
-
-            );
-
-          // ✅ STATUS
-          let status =
-            "completed";
-
-          // ✅ ALREADY RENEWED
-          if (newerRecord) {
-
-            status =
-              "completed";
-
-          }
-
-          // ❌ EXPIRED
-          else if (diffDays < 0) {
-
-            status =
-              "pending";
-
-          }
-
-          // ⚠ EXPIRING SOON
-          else if (
-            diffDays <= 3
-          ) {
-
-            status =
-              "warning";
-
-          }
-
-          // ✅ UPCOMING
-          else {
-
-            status =
-              "warning";
-
-          }
-
-          return {
-
-            _id: f._id,
-
-            studentId: f.studentId._id,
-
-            enrollmentNumber:
-              f.studentId.enrollmentNumber,
-
-            name:
-              f.studentId.name,
-
-            phone:
-              f.studentId.phone,
-
-            studyHours:
-              f.studentId.studyHours || "-",
-
-            // ✅ Modal me auto fill ke liye
-            amount:
-              f.monthlyFees || 0,
-
-            monthlyFees:
-              f.monthlyFees || 0,
-
-            totalAmount:
-              f.totalAmount || 0,
-
-            lastRenewalDate:
-              f.endDate,
-
-            renewDate:
-              f.paymentDate,
-
-            nextRenewDate:
-              newerRecord
-                ? newerRecord.endDate
-                : f.endDate,
-
-            status,
-
-            canRenew:
-              !newerRecord &&
-              (
-                status === "warning" ||
-                status === "pending"
-              )
-
-          };
-
-        });
+      .sort({ createdAt: -1 });
+
+    const validFees = fees.filter(
+      (f) => f.studentId && f.endDate
+    );
+
+    const result = validFees
+      .filter((f) => {
+        const endDate = new Date(f.endDate);
+
+        const feeMonthDate = new Date(
+          endDate.getFullYear(),
+          endDate.getMonth(),
+          1
+        );
+
+        // Check if already renewed
+        const newerRecord = validFees.find(
+          (item) =>
+            item.studentId?._id.toString() ===
+            f.studentId._id.toString() &&
+            new Date(item.createdAt) >
+            new Date(f.createdAt)
+        );
+
+        // Hide old renewed records
+        if (newerRecord) {
+          return false;
+        }
+
+        // Show selected month + previous pending months
+        return feeMonthDate <= selectedMonthDate;
+      })
+      .map((f) => {
+        const endDate = new Date(f.endDate);
+        endDate.setHours(0, 0, 0, 0);
+
+        const diffTime = endDate - today;
+
+        const diffDays = Math.ceil(
+          diffTime / (1000 * 60 * 60 * 24)
+        );
+
+        let status = "completed";
+
+        if (diffDays < 0) {
+          // Expired
+          status = "pending";
+        } else if (diffDays <= 3) {
+          // Expiring soon
+          status = "warning";
+        } else {
+          // Upcoming
+          status = "warning";
+        }
+
+        return {
+          _id: f._id,
+          studentId: f.studentId._id,
+          enrollmentNumber:
+            f.studentId.enrollmentNumber,
+          name: f.studentId.name,
+          phone: f.studentId.phone,
+          studyHours:
+            f.studentId.studyHours || "-",
+          amount: f.monthlyFees || 0,
+          monthlyFees:
+            f.monthlyFees || 0,
+          dueAmount:
+            f.dueAmount || 0,
+          paidAmount: f.paidAmount || 0,
+          totalAmount:
+            f.totalAmount || 0,
+          lastRenewalDate:
+            f.endDate,
+          renewDate:
+            f.paymentDate,
+          nextRenewDate:
+            f.endDate,
+          status,
+          canRenew:
+            status === "warning" ||
+            status === "pending",
+        };
+      });
 
     res.json({
-
       success: true,
-
-      count:
-        result.length,
-
-      data:
-        result
-
+      count: result.length,
+      data: result,
     });
-
   } catch (error) {
-
     console.error(error);
 
     res.status(500).json({
-
       success: false,
-
-      message:
-        error.message
-
+      message: error.message,
     });
-
   }
-
 };
