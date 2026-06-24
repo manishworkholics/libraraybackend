@@ -1,5 +1,4 @@
 import express from "express";
-
 import seatRoutes from "../modules/seat/seat.routes.js";
 import adminRoutes from "../modules/admin/admin.routes.js";
 import attendanceRoutes from "../modules/attendance/attendance.routes.js";
@@ -12,6 +11,7 @@ import superAdminRoutes from "../modules/superadmin/superAdmin.routes.js";
 import supportRoutes from "../modules/support/supportComplaint.routes.js";
 import uploadRoutes from "../modules/upload/upload.routes.js";
 import dashboardRoutes from "../modules/dashboard/dashboard.routes.js";
+import forgotpasswordRoutes from "../modules/forgotpassword/forgotpassword.routes.js";
 const router = express.Router();
 
 router.use("/seats", seatRoutes);
@@ -19,6 +19,7 @@ router.use("/admin", adminRoutes);
 router.use("/attendance", attendanceRoutes);
 router.use("/students", studentRoutes);
 router.use("/fees", feesRoutes);
+router.use("/forgotpassword", forgotpasswordRoutes)
 router.use("/complaints", complaintRoutes);
 router.use("/enquiry", enquiryRoutes);
 router.use("/subscription", subscriptionRoutes);

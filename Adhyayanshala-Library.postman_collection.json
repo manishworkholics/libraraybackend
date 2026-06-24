@@ -1,0 +1,1457 @@
+{
+  "info": {
+    "_postman_id": "fdfe6ce5-3d43-4a01-9b74-adhyayanshala-local",
+    "name": "Adhyayanshala Library API",
+    "description": "Postman collection generated from the mounted Express routes in libraraybackend/src/routes/index.js. Set baseUrl to your backend URL, for example http://localhost:9090/api/v1.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{adminToken}}",
+        "type": "string"
+      }
+    ]
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:9090/api/v1"
+    },
+    {
+      "key": "adminToken",
+      "value": ""
+    },
+    {
+      "key": "studentToken",
+      "value": ""
+    },
+    {
+      "key": "superAdminToken",
+      "value": ""
+    },
+    {
+      "key": "id",
+      "value": ""
+    },
+    {
+      "key": "studentId",
+      "value": ""
+    },
+    {
+      "key": "libraryId",
+      "value": ""
+    },
+    {
+      "key": "planId",
+      "value": ""
+    },
+    {
+      "key": "complaintId",
+      "value": ""
+    }
+  ],
+  "item": [
+    {
+      "name": "Admin",
+      "item": [
+        {
+          "name": "Admin Login",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"admin@example.com\",\n  \"password\": \"password\"\n}"
+            },
+            "url": "{{baseUrl}}/admin/login"
+          }
+        },
+        {
+          "name": "Add Expense",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Rent\",\n  \"amount\": 1000,\n  \"date\": \"2026-06-18\"\n}"
+            },
+            "url": "{{baseUrl}}/admin/expenses"
+          }
+        },
+        {
+          "name": "Get Expenses",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/admin/expenses"
+          }
+        },
+        {
+          "name": "Update Expense",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Updated expense\",\n  \"amount\": 1500\n}"
+            },
+            "url": "{{baseUrl}}/admin/expenses/{{id}}"
+          }
+        },
+        {
+          "name": "Delete Expense",
+          "request": {
+            "method": "DELETE",
+            "url": "{{baseUrl}}/admin/expenses/{{id}}"
+          }
+        },
+        {
+          "name": "Profit Dashboard",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/admin/profit-dashboard"
+          }
+        },
+        {
+          "name": "Profit Graph",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/admin/profit-graph"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Dashboard",
+      "item": [
+        {
+          "name": "Dashboard Stats",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/dashboard/stats"
+          }
+        },
+        {
+          "name": "Admin Dashboard",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/dashboard"
+          }
+        },
+        {
+          "name": "Graph Data",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/dashboard/graph"
+          }
+        },
+        {
+          "name": "Recent Activities",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/dashboard/recent-activities"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Students",
+      "item": [
+        {
+          "name": "Student Login",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"student@example.com\",\n  \"password\": \"password\"\n}"
+            },
+            "url": "{{baseUrl}}/students/login"
+          }
+        },
+        {
+          "name": "Create Student",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Student Name\",\n  \"email\": \"student@example.com\",\n  \"password\": \"password\",\n  \"phone\": \"9999999999\"\n}"
+            },
+            "url": "{{baseUrl}}/students"
+          }
+        },
+        {
+          "name": "Get All Students",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/students"
+          }
+        },
+        {
+          "name": "Get Student By ID",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/students/{{studentId}}"
+          }
+        },
+        {
+          "name": "Update Student",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Updated Student\"\n}"
+            },
+            "url": "{{baseUrl}}/students/{{studentId}}"
+          }
+        },
+        {
+          "name": "Delete Student",
+          "request": {
+            "method": "DELETE",
+            "url": "{{baseUrl}}/students/{{studentId}}"
+          }
+        },
+        {
+          "name": "Student Profile",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{studentToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "GET",
+            "url": "{{baseUrl}}/students/profile"
+          }
+        },
+        {
+          "name": "Available Seats",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{studentToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "GET",
+            "url": "{{baseUrl}}/students/seats"
+          }
+        },
+        {
+          "name": "Book Seat",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{studentToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"seatId\": \"{{id}}\"\n}"
+            },
+            "url": "{{baseUrl}}/students/book-seat"
+          }
+        },
+        {
+          "name": "Checkout Seat",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{studentToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "url": "{{baseUrl}}/students/checkout-seat"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Fees",
+      "item": [
+        {
+          "name": "Add Fees",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"studentId\": \"{{studentId}}\",\n  \"amount\": 1000,\n  \"paymentMode\": \"cash\"\n}"
+            },
+            "url": "{{baseUrl}}/fees/add"
+          }
+        },
+        {
+          "name": "Revenue Stats",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/fees/stats"
+          }
+        },
+        {
+          "name": "Renewal List",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/fees/renewal-list"
+          }
+        },
+        {
+          "name": "Renew Fees",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"amount\": 1000,\n  \"paymentMode\": \"cash\"\n}"
+            },
+            "url": "{{baseUrl}}/fees/renew/{{id}}"
+          }
+        },
+        {
+          "name": "Get Student Fees",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/fees/{{studentId}}"
+          }
+        },
+        {
+          "name": "Get Fees",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/fees"
+          }
+        },
+        {
+          "name": "Update Fees",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"amount\": 1200,\n  \"paymentMode\": \"online\"\n}"
+            },
+            "url": "{{baseUrl}}/fees/update/{{id}}"
+          }
+        },
+        {
+          "name": "Delete Fees",
+          "request": {
+            "method": "DELETE",
+            "url": "{{baseUrl}}/fees/delete/{{id}}"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Seats",
+      "item": [
+        {
+          "name": "Create Seat",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"seatNumber\": \"A1\"\n}"
+            },
+            "url": "{{baseUrl}}/seats/create"
+          }
+        },
+        {
+          "name": "Allot Seat To Student",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"studentId\": \"{{studentId}}\",\n  \"seatId\": \"{{id}}\"\n}"
+            },
+            "url": "{{baseUrl}}/seats/allot"
+          }
+        },
+        {
+          "name": "Seat Status",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/seats/status"
+          }
+        },
+        {
+          "name": "Seat Dashboard Summary",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/seats/dashboard-summary"
+          }
+        },
+        {
+          "name": "Delete Seat",
+          "request": {
+            "method": "DELETE",
+            "url": "{{baseUrl}}/seats/delete/{{id}}"
+          }
+        },
+        {
+          "name": "Student Book Seat",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{studentToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"seatId\": \"{{id}}\"\n}"
+            },
+            "url": "{{baseUrl}}/seats/book"
+          }
+        },
+        {
+          "name": "Cancel Seat Booking",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{studentToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "DELETE",
+            "url": "{{baseUrl}}/seats/cancel"
+          }
+        },
+        {
+          "name": "My Seat",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{studentToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "GET",
+            "url": "{{baseUrl}}/seats/my-seat"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Attendance",
+      "item": [
+        {
+          "name": "Student Check In",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{studentToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "url": "{{baseUrl}}/attendance/check-in"
+          }
+        },
+        {
+          "name": "Student Check Out",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{studentToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "url": "{{baseUrl}}/attendance/check-out"
+          }
+        },
+        {
+          "name": "Admin Mark Attendance",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"studentId\": \"{{studentId}}\",\n  \"status\": \"present\"\n}"
+            },
+            "url": "{{baseUrl}}/attendance/admin-mark"
+          }
+        },
+        {
+          "name": "Student Attendance History",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{studentToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "GET",
+            "url": "{{baseUrl}}/attendance/history"
+          }
+        },
+        {
+          "name": "Admin Attendance History",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/attendance/admin-history"
+          }
+        },
+        {
+          "name": "Monthly Attendance Percentage",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{studentToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "GET",
+            "url": "{{baseUrl}}/attendance/monthly-percentage"
+          }
+        },
+        {
+          "name": "Today Attendance Summary",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/attendance/today-summary"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Complaints",
+      "item": [
+        {
+          "name": "Create Complaint",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{studentToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Issue title\",\n  \"description\": \"Issue description\"\n}"
+            },
+            "url": "{{baseUrl}}/complaints/create"
+          }
+        },
+        {
+          "name": "My Complaints",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{studentToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "GET",
+            "url": "{{baseUrl}}/complaints/my"
+          }
+        },
+        {
+          "name": "My Profile",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{studentToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "GET",
+            "url": "{{baseUrl}}/complaints/my/profile"
+          }
+        },
+        {
+          "name": "Admin Get Complaints",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/complaints/admin"
+          }
+        },
+        {
+          "name": "Admin Update Complaint Status",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"resolved\"\n}"
+            },
+            "url": "{{baseUrl}}/complaints/admin/{{complaintId}}"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Enquiry",
+      "item": [
+        {
+          "name": "Website Enquiry Public",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Visitor\",\n  \"email\": \"visitor@example.com\",\n  \"phone\": \"9999999999\",\n  \"message\": \"I want to know more\"\n}"
+            },
+            "url": "{{baseUrl}}/enquiry/public"
+          }
+        },
+        {
+          "name": "Create Enquiry",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Lead\",\n  \"phone\": \"9999999999\"\n}"
+            },
+            "url": "{{baseUrl}}/enquiry"
+          }
+        },
+        {
+          "name": "Get All Enquiries",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/enquiry"
+          }
+        },
+        {
+          "name": "Get Single Enquiry",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/enquiry/{{id}}"
+          }
+        },
+        {
+          "name": "Update Enquiry",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Updated Lead\"\n}"
+            },
+            "url": "{{baseUrl}}/enquiry/{{id}}"
+          }
+        },
+        {
+          "name": "Delete Enquiry",
+          "request": {
+            "method": "DELETE",
+            "url": "{{baseUrl}}/enquiry/{{id}}"
+          }
+        },
+        {
+          "name": "Set Demo Date",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"demoDate\": \"2026-06-18\"\n}"
+            },
+            "url": "{{baseUrl}}/enquiry/demo/{{id}}"
+          }
+        },
+        {
+          "name": "Add Remark",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"remark\": \"Follow up\"\n}"
+            },
+            "url": "{{baseUrl}}/enquiry/remark/{{id}}"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Subscription",
+      "auth": {
+        "type": "bearer",
+        "bearer": [
+          {
+            "key": "token",
+            "value": "{{superAdminToken}}",
+            "type": "string"
+          }
+        ]
+      },
+      "item": [
+        {
+          "name": "Create Plan",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Basic\",\n  \"price\": 1000,\n  \"durationInDays\": 30\n}"
+            },
+            "url": "{{baseUrl}}/subscription/plan"
+          }
+        },
+        {
+          "name": "Get Plans",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "url": "{{baseUrl}}/subscription/plan"
+          }
+        },
+        {
+          "name": "Get Plan By ID",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "url": "{{baseUrl}}/subscription/plan/{{planId}}"
+          }
+        },
+        {
+          "name": "Update Plan",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Updated Plan\"\n}"
+            },
+            "url": "{{baseUrl}}/subscription/plan/{{planId}}"
+          }
+        },
+        {
+          "name": "Delete Plan",
+          "request": {
+            "method": "DELETE",
+            "url": "{{baseUrl}}/subscription/plan/{{planId}}"
+          }
+        },
+        {
+          "name": "Toggle Plan Status",
+          "request": {
+            "method": "PATCH",
+            "url": "{{baseUrl}}/subscription/plan/{{planId}}/status"
+          }
+        },
+        {
+          "name": "Activate Plan For Library",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"libraryId\": \"{{libraryId}}\",\n  \"planId\": \"{{planId}}\"\n}"
+            },
+            "url": "{{baseUrl}}/subscription/activate"
+          }
+        },
+        {
+          "name": "Current Subscription",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/subscription/current/{{libraryId}}"
+          }
+        },
+        {
+          "name": "Subscription History",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/subscription/history/{{libraryId}}"
+          }
+        },
+        {
+          "name": "All Renewals",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/subscription/renewals"
+          }
+        },
+        {
+          "name": "Expiring Soon",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/subscription/expiring-soon"
+          }
+        },
+        {
+          "name": "Renewal Dashboard",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/subscription/renewal-dashboard"
+          }
+        },
+        {
+          "name": "Monthly Renewals",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/subscription/monthly-renewals"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Super Admin",
+      "auth": {
+        "type": "bearer",
+        "bearer": [
+          {
+            "key": "token",
+            "value": "{{superAdminToken}}",
+            "type": "string"
+          }
+        ]
+      },
+      "item": [
+        {
+          "name": "Super Admin Login",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"superadmin@example.com\",\n  \"password\": \"password\"\n}"
+            },
+            "url": "{{baseUrl}}/super-admin/login"
+          }
+        },
+        {
+          "name": "Dashboard",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/super-admin/dashboard"
+          }
+        },
+        {
+          "name": "Get All Library",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/super-admin/get-all-library"
+          }
+        },
+        {
+          "name": "Create Library",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"libraryName\": \"Library Name\",\n  \"email\": \"library@example.com\",\n  \"password\": \"password\"\n}"
+            },
+            "url": "{{baseUrl}}/super-admin/create-library"
+          }
+        },
+        {
+          "name": "Get Library By ID",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/super-admin/library/{{libraryId}}"
+          }
+        },
+        {
+          "name": "Update Library",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"libraryName\": \"Updated Library\"\n}"
+            },
+            "url": "{{baseUrl}}/super-admin/library/{{libraryId}}"
+          }
+        },
+        {
+          "name": "Delete Library",
+          "request": {
+            "method": "DELETE",
+            "url": "{{baseUrl}}/super-admin/library/{{libraryId}}"
+          }
+        },
+        {
+          "name": "Toggle Library Status",
+          "request": {
+            "method": "PUT",
+            "url": "{{baseUrl}}/super-admin/library/{{libraryId}}/status"
+          }
+        },
+        {
+          "name": "Activate Library Subscription",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"libraryId\": \"{{libraryId}}\",\n  \"planId\": \"{{planId}}\"\n}"
+            },
+            "url": "{{baseUrl}}/super-admin/subscription/activate"
+          }
+        },
+        {
+          "name": "Platform Revenue Dashboard",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/super-admin/platform-revenue/dashboard"
+          }
+        },
+        {
+          "name": "Revenue 12 Months",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/super-admin/revenue-12-months"
+          }
+        },
+        {
+          "name": "Library Wise Revenue",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/super-admin/library-wise-revenue"
+          }
+        },
+        {
+          "name": "Add Platform Expense",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Server cost\",\n  \"amount\": 1000\n}"
+            },
+            "url": "{{baseUrl}}/super-admin/platform-expenses"
+          }
+        },
+        {
+          "name": "Get Platform Expenses",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/super-admin/platform-expenses"
+          }
+        },
+        {
+          "name": "Delete Platform Expense",
+          "request": {
+            "method": "DELETE",
+            "url": "{{baseUrl}}/super-admin/platform-expenses/{{id}}"
+          }
+        },
+        {
+          "name": "Platform Revenue History",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/super-admin/platform-revenue/history"
+          }
+        },
+        {
+          "name": "Platform Revenue By ID",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/super-admin/platform-revenue/{{id}}"
+          }
+        },
+        {
+          "name": "Update Platform Revenue",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"amount\": 1200\n}"
+            },
+            "url": "{{baseUrl}}/super-admin/platform-revenue/{{id}}"
+          }
+        },
+        {
+          "name": "Profit Dashboard",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/super-admin/profit-dashboard"
+          }
+        },
+        {
+          "name": "Profit Graph",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "url": "{{baseUrl}}/super-admin/profit-graph"
+          }
+        },
+        {
+          "name": "Create Plan",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Plan\",\n  \"price\": 1000,\n  \"durationInDays\": 30\n}"
+            },
+            "url": "{{baseUrl}}/super-admin/plans"
+          }
+        },
+        {
+          "name": "Get Plans",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/super-admin/plans"
+          }
+        },
+        {
+          "name": "Update Plan",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Updated Plan\"\n}"
+            },
+            "url": "{{baseUrl}}/super-admin/plans/{{planId}}"
+          }
+        },
+        {
+          "name": "Delete Plan",
+          "request": {
+            "method": "DELETE",
+            "url": "{{baseUrl}}/super-admin/plans/{{planId}}"
+          }
+        },
+        {
+          "name": "Create Success Story",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Story title\",\n  \"description\": \"Story description\"\n}"
+            },
+            "url": "{{baseUrl}}/super-admin/success-story"
+          }
+        },
+        {
+          "name": "Get Success Stories",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "url": "{{baseUrl}}/super-admin/success-story"
+          }
+        },
+        {
+          "name": "Update Success Story",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Updated story\"\n}"
+            },
+            "url": "{{baseUrl}}/super-admin/success-story/{{id}}"
+          }
+        },
+        {
+          "name": "Delete Success Story",
+          "request": {
+            "method": "DELETE",
+            "url": "{{baseUrl}}/super-admin/success-story/{{id}}"
+          }
+        },
+        {
+          "name": "Create Gallery",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Gallery item\",\n  \"image\": \"https://example.com/image.jpg\"\n}"
+            },
+            "url": "{{baseUrl}}/super-admin/gallery"
+          }
+        },
+        {
+          "name": "Get Gallery",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "url": "{{baseUrl}}/super-admin/gallery"
+          }
+        },
+        {
+          "name": "Update Gallery",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Updated gallery item\"\n}"
+            },
+            "url": "{{baseUrl}}/super-admin/gallery/{{id}}"
+          }
+        },
+        {
+          "name": "Delete Gallery",
+          "request": {
+            "method": "DELETE",
+            "url": "{{baseUrl}}/super-admin/gallery/{{id}}"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Support",
+      "item": [
+        {
+          "name": "Create Support Complaint",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Support issue\",\n  \"description\": \"Support description\"\n}"
+            },
+            "url": "{{baseUrl}}/support"
+          }
+        },
+        {
+          "name": "My Support Complaints",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/support/my"
+          }
+        },
+        {
+          "name": "Super Admin Get All Support Complaints",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{superAdminToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "GET",
+            "url": "{{baseUrl}}/support/admin/all"
+          }
+        },
+        {
+          "name": "Resolve Support Complaint",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{superAdminToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "PUT",
+            "url": "{{baseUrl}}/support/admin/resolve/{{id}}"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Upload",
+      "item": [
+        {
+          "name": "Upload Image",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "image",
+                  "type": "file",
+                  "src": []
+                }
+              ]
+            },
+            "url": "{{baseUrl}}/upload/upload-image"
+          }
+        }
+      ]
+    }
+  ]
+}

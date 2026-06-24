@@ -1,4 +1,4 @@
-import Admin from "../models/adminModel.js";
+import Admin from "../admin/admin.model.js";
 import crypto from "crypto";
 import nodemailer from "nodemailer";
 import bcrypt from "bcryptjs";
@@ -20,14 +20,15 @@ export const forgotPassword = async (req, res) => {
     if (!admin) {
       return res.status(404).json({
         success: false,
-        message: "User not found",
+        message: "User not found"
       });
     }
 
-    // EMAIL RESET LINK
+    // EMAIL RESET
     if (email) {
 
-      const resetToken = crypto.randomBytes(32).toString("hex");
+      const resetToken =
+        crypto.randomBytes(32).toString("hex");
 
       admin.resetPasswordToken = resetToken;
 
@@ -39,29 +40,14 @@ export const forgotPassword = async (req, res) => {
       const resetUrl =
         `http://localhost:3000/reset-password/${resetToken}`;
 
-      const transporter = nodemailer.createTransport({
-        service: "gmail",
-        auth: {
-          user: process.env.EMAIL,
-          pass: process.env.EMAIL_PASSWORD,
-        },
-      });
-
-      await transporter.sendMail({
-        from: process.env.EMAIL,
-        to: admin.email,
-        subject: "Password Reset",
-        html: `
-          <h3>Password Reset</h3>
-          <a href="${resetUrl}">
-            Click Here
-          </a>
-        `,
-      });
+      console.log("RESET URL =>", resetUrl);
 
       return res.status(200).json({
         success: true,
-        message: "Reset link sent to email",
+        message:
+          "Reset token generated successfully",
+        resetToken,
+        resetUrl
       });
     }
 
@@ -80,20 +66,30 @@ export const forgotPassword = async (req, res) => {
 
       await admin.save();
 
-      // Twilio / MSG91 SMS API
-      console.log("OTP:", otp);
+      console.log("OTP =>", otp);
 
       return res.status(200).json({
         success: true,
-        message: "OTP sent to mobile number",
+        message: "OTP generated successfully",
+        otp
       });
     }
 
+    return res.status(400).json({
+      success: false,
+      message: "Email or phone is required"
+    });
+
   } catch (error) {
+
+    console.error(
+      "FORGOT PASSWORD ERROR =>",
+      error
+    );
 
     return res.status(500).json({
       success: false,
-      message: error.message,
+      message: error.message
     });
 
   }

@@ -4,7 +4,8 @@ import Student from "../student/student.model.js";
 /* Add Fees Entry */
 export const addFees = async (req, res) => {
   try {
-
+    console.log("BODY =>", req.body);
+    console.log("HEADERS =>", req.headers);
     const {
 
       studentId,
