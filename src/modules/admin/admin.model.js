@@ -30,7 +30,7 @@ const adminSchema = new mongoose.Schema(
     // 🔥 Role-based system
     role: {
       type: String,
-      enum: ["superAdmin", "owner", "staff", "accountant"],
+      enum: ["superAdmin", "owner", "branchAdmin", "staff", "accountant"],
       default: "owner"
     },
 

@@ -256,6 +256,10 @@ export const createLibrary = async (req, res) => {
       isActive: true,
     });
 
+    // Mark the initially created library as the owner's first branch.
+    library.ownerAdminId = owner._id;
+    await library.save();
+
     return res.status(201).json({
       success: true,
       message: "Library created successfully",

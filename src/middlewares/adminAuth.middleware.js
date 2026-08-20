@@ -15,7 +15,7 @@ const adminAuth = async (req, res, next) => {
 
     // 2️⃣ Find admin
     const admin = await Admin.findById(decoded.userId);
-    if (!admin) {
+    if (!admin || !admin.isActive) {
       return res.status(401).json({ message: "Unauthorized" });
     }
 

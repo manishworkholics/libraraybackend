@@ -87,17 +87,22 @@ export const getAllEnquiries = async (req, res) => {
       };
     }
 
+    const pageNumber = Math.max(1, Number.parseInt(page, 10) || 1);
+    const pageLimit = Math.max(1, Number.parseInt(limit, 10) || 10);
+
     const enquiries = await Enquiry.find(query)
-      .sort({ createdAt: -1 })
-      .skip((page - 1) * Number(limit))
-      .limit(Number(limit));
+      // Keep CSV/manual import order (oldest first). `_id` makes the order
+      // deterministic when multiple enquiries share the same createdAt value.
+      .sort({ createdAt: 1, _id: 1 })
+      .skip((pageNumber - 1) * pageLimit)
+      .limit(pageLimit);
 
     const total = await Enquiry.countDocuments(query);
 
     res.json({
       total,
-      page: Number(page),
-      pages: Math.ceil(total / limit),
+      page: pageNumber,
+      pages: Math.ceil(total / pageLimit),
       enquiries
     });
 

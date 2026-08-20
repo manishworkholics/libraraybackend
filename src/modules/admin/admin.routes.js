@@ -6,13 +6,20 @@ import {
     deleteExpense,
     updateExpense,
     getAdminProfitDashboard,
-    getAdminMonthlyProfitGraph
+    getAdminMonthlyProfitGraph,
+    getBranches,
+    createBranch,
+    getOwnerBranchDashboard
 } from "./admin.controller.js";
 import adminAuth from "../../middlewares/adminAuth.middleware.js";
 
 const router = express.Router();
 
 router.post("/login", adminLogin);
+
+router.get("/branches", adminAuth, getBranches);
+router.post("/branches", adminAuth, createBranch);
+router.get("/owner-dashboard", adminAuth, getOwnerBranchDashboard);
 
 router.post("/expenses", adminAuth, addExpense);
 router.get("/expenses", adminAuth, getExpenses);
