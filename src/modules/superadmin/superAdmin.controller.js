@@ -10,6 +10,7 @@ import SuperAdmin from "../superadmin/superAdmin.model.js";
 import SupportComplaint from "../support/supportComplaint.model.js";
 import SuccessStory from "../commonmodel/SuccessStory.model.js";
 import Gallery from "../commonmodel/Gallery.model.js";
+import Branch from "../commonmodel/Branch.model.js";
 import jwt from "jsonwebtoken";
 
 /* ================= SUPER ADMIN LOGIN ================= */
@@ -259,6 +260,34 @@ export const createLibrary = async (req, res) => {
     // Mark the initially created library as the owner's first branch.
     library.ownerAdminId = owner._id;
     await library.save();
+
+    // Every new library starts with a real Main Branch. The branch admin logs
+    // in using this generated ID and the same initial password as the owner.
+    const firstWord = library.name.trim().split(/\s+/)[0] || "BRN";
+    const prefix = firstWord.replace(/[^a-z0-9]/gi, "").slice(0, 3).toUpperCase() || "BRN";
+    let branchNumber = 1;
+    let branchLoginId = `${prefix}-${branchNumber}`;
+    while (await Branch.exists({ branchId: branchLoginId })) {
+      branchNumber += 1;
+      branchLoginId = `${prefix}-${branchNumber}`;
+    }
+    const mainBranch = await Branch.create({
+      libraryId: library._id,
+      name: "Main Branch",
+      branchId: branchLoginId,
+      phone: library.phone || "",
+      address: library.address || "",
+      isActive: true
+    });
+    await Admin.create({
+      name: `${mainBranch.name} Admin`,
+      email: `branch-${mainBranch._id}@internal.local`,
+      password: hashedPassword,
+      libraryId: library._id,
+      branchId: mainBranch._id,
+      role: "branchAdmin",
+      isActive: true
+    });
 
     return res.status(201).json({
       success: true,

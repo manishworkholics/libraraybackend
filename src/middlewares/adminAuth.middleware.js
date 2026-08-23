@@ -1,6 +1,7 @@
 import jwt from "jsonwebtoken";
 import Admin from "../modules/admin/admin.model.js";
 import Library from "../modules/commonmodel/Library.model.js";
+import Branch from "../modules/commonmodel/Branch.model.js";
 
 const adminAuth = async (req, res, next) => {
   try {
@@ -38,9 +39,23 @@ const adminAuth = async (req, res, next) => {
     }
 
     // 5️⃣ Attach SaaS-safe user object
+    let activeBranch = null;
+    if (admin.role === "branchAdmin") {
+      activeBranch = await Branch.findOne({
+        _id: admin.branchId,
+        libraryId: library._id,
+        isActive: true
+      });
+      if (!activeBranch) {
+        return res.status(403).json({ message: "Branch account is inactive or invalid" });
+      }
+    }
+
     req.user = {
       userId: admin._id,
-      libraryId: library._id,
+      libraryId: activeBranch?._id || library._id,
+      parentLibraryId: library._id,
+      branchId: activeBranch?._id || null,
       role: admin.role
     };
 

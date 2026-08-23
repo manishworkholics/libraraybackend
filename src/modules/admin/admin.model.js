@@ -9,8 +9,9 @@ const adminSchema = new mongoose.Schema(
 
     email: {
       type: String,
-      required: true,
+      required: function () { return this.role !== "branchAdmin"; },
       unique: true,
+      sparse: true,
       lowercase: true,
       trim: true
     },
@@ -25,6 +26,14 @@ const adminSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: "Library",
       required: true
+    },
+
+    // Present only for branch admins. A branch is always owned by libraryId.
+    branchId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Branch",
+      default: null,
+      index: true
     },
 
     // 🔥 Role-based system

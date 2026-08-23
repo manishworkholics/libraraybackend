@@ -9,6 +9,7 @@ import {
     getAdminMonthlyProfitGraph,
     getBranches,
     createBranch,
+    setBranchLogin,
     getOwnerBranchDashboard
 } from "./admin.controller.js";
 import adminAuth from "../../middlewares/adminAuth.middleware.js";
@@ -19,6 +20,7 @@ router.post("/login", adminLogin);
 
 router.get("/branches", adminAuth, getBranches);
 router.post("/branches", adminAuth, createBranch);
+router.put("/branches/:branchId/login", adminAuth, setBranchLogin);
 router.get("/owner-dashboard", adminAuth, getOwnerBranchDashboard);
 
 router.post("/expenses", adminAuth, addExpense);

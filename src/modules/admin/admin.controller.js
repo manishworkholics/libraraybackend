@@ -8,6 +8,11 @@ import Enquiry from "../enquiry/enquiry.model.js";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import Library from "../commonmodel/Library.model.js";
+import Branch from "../commonmodel/Branch.model.js";
+import Attendance from "../attendance/attendance.model.js";
+import Complaint from "../complaint/complaint.model.js";
+
+const branchDataModels = [Student, Seat, SeatBooking, Fees, Expense, Enquiry, Attendance, Complaint];
 
 const requireOwner = (req, res) => {
   if (req.user.role !== "owner") {
@@ -17,28 +22,84 @@ const requireOwner = (req, res) => {
   return true;
 };
 
-const getOwnerBranches = async (ownerId, primaryLibraryId) => {
-  // Backwards compatibility: existing owner accounts keep their current
-  // library as their first branch without any data migration.
-  await Library.updateOne(
-    { _id: primaryLibraryId, ownerAdminId: null },
-    { $set: { ownerAdminId: ownerId } }
-  );
+const getBranchPrefix = (libraryName = "") => {
+  const firstWord = libraryName.trim().split(/\s+/)[0] || "BRANCH";
+  return firstWord.replace(/[^a-z0-9]/gi, "").slice(0, 3).toUpperCase() || "BRN";
+};
 
-  return Library.find({ ownerAdminId: ownerId, isActive: true })
-    .select("name libraryCode address phone email isActive")
+const getNextBranchLoginId = async (library) => {
+  const prefix = getBranchPrefix(library.name);
+  let number = (await Branch.countDocuments({ libraryId: library._id })) + 1;
+  let branchId = `${prefix}-${number}`;
+  while (await Branch.exists({ branchId })) {
+    number += 1;
+    branchId = `${prefix}-${number}`;
+  }
+  return branchId;
+};
+
+const ensureDefaultBranch = async (library) => {
+  let branch = await Branch.findOne({ libraryId: library._id }).sort({ createdAt: 1 });
+  if (branch) {
+    // Old initial branches included the library name. Keep dropdown labels
+    // branch-focused instead of showing the parent library name.
+    if (branch.name === `${library.name} - Main Branch`) {
+      branch.name = "Main Branch";
+      await branch.save();
+    }
+    return branch;
+  }
+
+  branch = await Branch.create({
+    libraryId: library._id,
+    name: "Main Branch",
+    branchId: await getNextBranchLoginId(library),
+    phone: library.phone || "",
+    address: library.address || ""
+  });
+  // Existing data becomes Main Branch data exactly once. This preserves it
+  // while letting unchanged operational controllers scope by branch ID.
+  await Promise.all(branchDataModels.map((Model) => Model.updateMany(
+    { libraryId: library._id },
+    { $set: { libraryId: branch._id } }
+  )));
+  // The initial branch can be accessed immediately using its generated Branch
+  // ID and the current owner's password. No admin email is needed.
+  const owner = await Admin.findOne({ libraryId: library._id, role: "owner" });
+  if (owner) {
+    await Admin.create({
+      name: `${branch.name} Admin`,
+      // Legacy deployments have a unique email index. This internal value
+      // preserves that constraint; branch login never uses email.
+      email: `branch-${branch._id}@internal.local`,
+      password: owner.password,
+      libraryId: library._id,
+      branchId: branch._id,
+      role: "branchAdmin",
+      isActive: true
+    });
+  }
+  return branch;
+};
+
+const getOwnerBranches = async (libraryId) => {
+  const library = await Library.findById(libraryId);
+  if (!library) return [];
+  await ensureDefaultBranch(library);
+  return Branch.find({ libraryId: library._id, isActive: true })
+    .select("name branchId address phone isActive")
     .sort({ createdAt: 1 });
 };
 
 export const getBranches = async (req, res) => {
   try {
     if (req.user.role !== "owner") {
-      const branch = await Library.findById(req.user.libraryId)
-        .select("name libraryCode address phone email isActive");
+      const branch = await Branch.findById(req.user.branchId)
+        .select("name branchId address phone isActive");
       return res.json({ branches: branch ? [branch] : [] });
     }
 
-    const branches = await getOwnerBranches(req.user.userId, req.user.libraryId);
+    const branches = await getOwnerBranches(req.user.libraryId);
     res.json({ branches });
   } catch (error) {
     res.status(500).json({ message: error.message });
@@ -49,36 +110,66 @@ export const createBranch = async (req, res) => {
   try {
     if (!requireOwner(req, res)) return;
 
-    const { name, email, phone, address, adminName, adminEmail, adminPassword } = req.body;
-    if (!name || !email || !adminName || !adminEmail || !adminPassword) {
-      return res.status(400).json({ message: "Branch and branch-admin details are required" });
+    const { name, phone, address, adminName, password } = req.body;
+    if (!name || !password) {
+      return res.status(400).json({ message: "Branch name and password are required" });
     }
 
-    const [existingLibrary, existingAdmin] = await Promise.all([
-      Library.findOne({ email: email.toLowerCase().trim() }),
-      Admin.findOne({ email: adminEmail.toLowerCase().trim() })
-    ]);
-    if (existingLibrary) return res.status(400).json({ message: "A branch already uses this email" });
-    if (existingAdmin) return res.status(400).json({ message: "An admin already uses this email" });
+    const library = await Library.findById(req.user.libraryId);
+    if (!library) return res.status(404).json({ message: "Library not found" });
+    const generatedBranchId = await getNextBranchLoginId(library);
 
-    const lastLibrary = await Library.findOne({ libraryCode: { $exists: true } })
-      .sort({ createdAt: -1 });
-    const lastNumber = Number.parseInt(lastLibrary?.libraryCode?.split("-")[1], 10) || 0;
-    const libraryCode = `LIB-${String(lastNumber + 1).padStart(4, "0")}`;
-
-    const branch = await Library.create({
-      name: name.trim(), email: email.toLowerCase().trim(), phone: phone?.trim() || "",
-      address: address?.trim() || "", ownerName: adminName.trim(),
-      ownerEmail: adminEmail.toLowerCase().trim(), libraryCode,
-      ownerAdminId: req.user.userId, isActive: true
+    const branch = await Branch.create({
+      libraryId: library._id, name: name.trim(), branchId: generatedBranchId,
+      phone: phone?.trim() || "", address: address?.trim() || "", isActive: true
     });
     const branchAdmin = await Admin.create({
-      name: adminName.trim(), email: adminEmail.toLowerCase().trim(),
-      password: await bcrypt.hash(adminPassword, 10), libraryId: branch._id,
-      role: "branchAdmin", isActive: true
+      name: adminName?.trim() || `${branch.name} Admin`,
+      // Internal-only unique email for the existing Admin.email unique index.
+      // The branch admin signs in only with Branch ID + password.
+      email: `branch-${branch._id}@internal.local`,
+      password: await bcrypt.hash(password, 10), libraryId: req.user.libraryId,
+      branchId: branch._id, role: "branchAdmin", isActive: true
     });
 
-    res.status(201).json({ message: "Branch and branch admin created successfully", branch, branchAdmin: { id: branchAdmin._id, name: branchAdmin.name, email: branchAdmin.email } });
+    res.status(201).json({ message: "Branch and branch login created successfully", branch, branchAdmin: { id: branchAdmin._id, name: branchAdmin.name } });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+export const setBranchLogin = async (req, res) => {
+  try {
+    if (!requireOwner(req, res)) return;
+    const { password } = req.body;
+    if (!password || password.length < 6) {
+      return res.status(400).json({ message: "Password must be at least 6 characters" });
+    }
+
+    const branch = await Branch.findOne({
+      _id: req.params.branchId,
+      libraryId: req.user.libraryId,
+      isActive: true
+    });
+    if (!branch) return res.status(404).json({ message: "Branch not found" });
+
+    const hashedPassword = await bcrypt.hash(password, 10);
+    const branchAdmin = await Admin.findOneAndUpdate(
+      { branchId: branch._id, role: "branchAdmin" },
+      {
+        $set: {
+          name: `${branch.name} Admin`,
+          email: `branch-${branch._id}@internal.local`,
+          password: hashedPassword,
+          libraryId: req.user.libraryId,
+          isActive: true
+        },
+        $setOnInsert: { branchId: branch._id, role: "branchAdmin" }
+      },
+      { new: true, upsert: true, setDefaultsOnInsert: true }
+    );
+
+    res.json({ message: `Login password saved for ${branch.branchId}`, branchAdmin: { id: branchAdmin._id } });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
@@ -87,7 +178,7 @@ export const createBranch = async (req, res) => {
 export const getOwnerBranchDashboard = async (req, res) => {
   try {
     if (!requireOwner(req, res)) return;
-    const branches = await getOwnerBranches(req.user.userId, req.user.libraryId);
+    const branches = await getOwnerBranches(req.user.libraryId);
     const branchIds = branches.map((branch) => branch._id);
 
     const [revenue, expenses, totalStudents, totalSeats, occupiedSeatIds, totalEnquiries] = await Promise.all([
@@ -103,7 +194,7 @@ export const getOwnerBranchDashboard = async (req, res) => {
     const comparison = branches.map((branch) => {
       const totalRevenue = revenueByBranch.get(String(branch._id)) || 0;
       const totalExpense = expenseByBranch.get(String(branch._id)) || 0;
-      return { id: branch._id, name: branch.name, libraryCode: branch.libraryCode, totalRevenue, totalExpense, profit: totalRevenue - totalExpense };
+      return { id: branch._id, name: branch.name, branchId: branch.branchId, totalRevenue, totalExpense, profit: totalRevenue - totalExpense };
     });
     const totals = comparison.reduce((sum, branch) => ({ totalRevenue: sum.totalRevenue + branch.totalRevenue, totalExpense: sum.totalExpense + branch.totalExpense, profit: sum.profit + branch.profit }), { totalRevenue: 0, totalExpense: 0, profit: 0 });
     res.json({
@@ -128,16 +219,18 @@ export const adminLogin = async (req, res) => {
     const { email, password, branchId } = req.body;
 
     // 1️⃣ Find admin and populate library
-    const admin = await Admin.findOne({ email }).populate("libraryId");
+    let branch = null;
+    let admin;
+    if (branchId) {
+      branch = await Branch.findOne({ branchId: branchId.trim().toUpperCase(), isActive: true });
+      if (!branch) return res.status(404).json({ message: "Branch ID not found" });
+      admin = await Admin.findOne({ branchId: branch._id, role: "branchAdmin", isActive: true }).populate("libraryId");
+    } else {
+      admin = await Admin.findOne({ email: email?.toLowerCase().trim() }).populate("libraryId");
+    }
 
     if (!admin) {
       return res.status(404).json({ message: "Admin not found" });
-    }
-
-    // When a branch is selected from the owner dashboard, credentials must
-    // belong to that exact branch; direct branch switching is not permitted.
-    if (branchId && String(admin.libraryId._id) !== String(branchId)) {
-      return res.status(403).json({ message: "These credentials do not belong to the selected branch" });
     }
 
     // 2️⃣ Check library active status
@@ -168,6 +261,7 @@ export const adminLogin = async (req, res) => {
       {
         userId: admin._id,
         libraryId: admin.libraryId._id,
+        branchId: branch?._id || null,
         role: admin.role
       },
       process.env.JWT_SECRET,
@@ -183,6 +277,7 @@ export const adminLogin = async (req, res) => {
         name: admin.name,
         email: admin.email,
         role: admin.role,
+        branch: branch ? { id: branch._id, branchId: branch.branchId, name: branch.name } : null,
         library: {
           id: admin.libraryId._id,
           name: admin.libraryId.name,
