@@ -2,7 +2,7 @@
   "info": {
     "_postman_id": "fdfe6ce5-3d43-4a01-9b74-adhyayanshala-local",
     "name": "Adhyayanshala Library API",
-    "description": "Postman collection generated from the mounted Express routes in libraraybackend/src/routes/index.js. Set baseUrl to your backend URL, for example http://localhost:9090/api/v1.",
+    "description": "Postman collection generated from the mounted Express routes in libraraybackend/src/routes/index.js. Set baseUrl to your backend URL, for example http://206.189.130.102:9090/api/v1.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "auth": {
@@ -18,7 +18,7 @@
   "variable": [
     {
       "key": "baseUrl",
-      "value": "http://localhost:9090/api/v1"
+      "value": "http://206.189.130.102:9090/api/v1"
     },
     {
       "key": "adminToken",

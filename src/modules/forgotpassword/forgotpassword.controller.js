@@ -38,7 +38,7 @@ export const forgotPassword = async (req, res) => {
       await admin.save();
 
       const resetUrl =
-        `http://localhost:3000/reset-password/${resetToken}`;
+        `http://206.189.130.102/librarymanagement/reset-password/${resetToken}`;
 
       console.log("RESET URL =>", resetUrl);
 
