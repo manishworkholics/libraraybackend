@@ -141,6 +141,7 @@ export const createLibrary = async (req, res) => {
       address,
       phone,
       password,
+      logo,
     } = req.body;
 
     // Required Fields Check
@@ -241,6 +242,7 @@ export const createLibrary = async (req, res) => {
       ownerEmail: ownerEmail.toLowerCase().trim(),
       address: address?.trim() || "",
       phone,
+      logo: logo?.trim() || "",
       isActive: true,
     });
 
@@ -372,6 +374,7 @@ export const updateLibrary = async (req, res) => {
       address,
       phone,
       password,
+      logo,
     } = req.body;
 
     // Find Library
@@ -460,6 +463,7 @@ export const updateLibrary = async (req, res) => {
         ? address
         : library.address;
     library.phone = phone || library.phone;
+    library.logo = logo !== undefined ? logo.trim() : library.logo;
 
     await library.save();
 

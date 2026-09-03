@@ -12,7 +12,37 @@ import Branch from "../commonmodel/Branch.model.js";
 import Attendance from "../attendance/attendance.model.js";
 import Complaint from "../complaint/complaint.model.js";
 
-const branchDataModels = [Student, Seat, SeatBooking, Fees, Expense, Enquiry, Attendance, Complaint];
+const branchDataModels = [Seat, SeatBooking, Fees, Expense, Enquiry, Attendance, Complaint];
+
+const migrateLegacyDataToMainBranch = async (parentLibraryId, branchId) => {
+  // Students have a unique { enrollmentNumber, libraryId } index, so migrate
+  // them one by one and preserve both records if historical duplicate IDs exist.
+  const legacyStudents = await Student.find({ libraryId: parentLibraryId })
+    .select("_id enrollmentNumber");
+
+  for (const student of legacyStudents) {
+    let enrollmentNumber = student.enrollmentNumber;
+    const duplicate = await Student.exists({
+      _id: { $ne: student._id },
+      libraryId: branchId,
+      enrollmentNumber
+    });
+
+    if (duplicate) {
+      enrollmentNumber = `${enrollmentNumber}-OLD-${String(student._id).slice(-4)}`;
+    }
+
+    await Student.updateOne(
+      { _id: student._id },
+      { $set: { libraryId: branchId, enrollmentNumber } }
+    );
+  }
+
+  await Promise.all(branchDataModels.map((Model) => Model.updateMany(
+    { libraryId: parentLibraryId },
+    { $set: { libraryId: branchId } }
+  )));
+};
 
 const requireOwner = (req, res) => {
   if (req.user.role !== "owner") {
@@ -47,6 +77,24 @@ const ensureDefaultBranch = async (library) => {
       branch.name = "Main Branch";
       await branch.save();
     }
+    // Idempotent legacy migration: records created before branches existed
+    // still point to the parent library. They always belong to Main Branch.
+    await migrateLegacyDataToMainBranch(library._id, branch._id);
+    const existingBranchAdmin = await Admin.findOne({ branchId: branch._id, role: "branchAdmin" });
+    if (!existingBranchAdmin) {
+      const owner = await Admin.findOne({ libraryId: library._id, role: "owner" });
+      if (owner) {
+        await Admin.create({
+          name: `${branch.name} Admin`,
+          email: `branch-${branch._id}@internal.local`,
+          password: owner.password,
+          libraryId: library._id,
+          branchId: branch._id,
+          role: "branchAdmin",
+          isActive: true
+        });
+      }
+    }
     return branch;
   }
 
@@ -59,10 +107,7 @@ const ensureDefaultBranch = async (library) => {
   });
   // Existing data becomes Main Branch data exactly once. This preserves it
   // while letting unchanged operational controllers scope by branch ID.
-  await Promise.all(branchDataModels.map((Model) => Model.updateMany(
-    { libraryId: library._id },
-    { $set: { libraryId: branch._id } }
-  )));
+  await migrateLegacyDataToMainBranch(library._id, branch._id);
   // The initial branch can be accessed immediately using its generated Branch
   // ID and the current owner's password. No admin email is needed.
   const owner = await Admin.findOne({ libraryId: library._id, role: "owner" });
@@ -281,6 +326,7 @@ export const adminLogin = async (req, res) => {
         library: {
           id: admin.libraryId._id,
           name: admin.libraryId.name,
+          logo: admin.libraryId.logo || "",
           subscriptionPlan: admin.libraryId.subscriptionPlan
         }
       }

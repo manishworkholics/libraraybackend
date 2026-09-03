@@ -25,7 +25,7 @@ export const createStudent = async (req, res) => {
       password
     } = req.body;
 
-    const { libraryId } = req.user;
+    const { libraryId, parentLibraryId } = req.user;
 
     // ✅ REQUIRED FIELDS
     if (
@@ -139,7 +139,7 @@ export const createStudent = async (req, res) => {
     // ✅ LIBRARY
     const library =
       await Library.findById(
-        libraryId
+        parentLibraryId || libraryId
       );
 
     if (!library) {

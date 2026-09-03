@@ -2,6 +2,7 @@ import mongoose from "mongoose";
 import dns from "dns";
 
 dns.setServers([
+  "1.1.1.1",
   "8.8.8.8",
   "8.8.4.4"
 ]);
@@ -9,12 +10,18 @@ dns.setServers([
 
 const connectDB = async () => {
   try {
-    const conn = await mongoose.connect("mongodb+srv://maynkprwl9165_db_user:T2PVE3NLLPIvEpzf@cluster0.yee6klx.mongodb.net/");
+    if (!process.env.MONGO_URI) {
+      throw new Error("MONGO_URI is missing from the .env file");
+    }
+
+    const conn = await mongoose.connect(process.env.MONGO_URI, {
+      serverSelectionTimeoutMS: 10000
+    });
 
     console.log(`MongoDB Connected: ${conn.connection.host}`);
   } catch (error) {
     console.error("Database connection failed:", error.message);
-    process.exit(1);
+    throw error;
   }
 };
 

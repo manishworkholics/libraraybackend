@@ -32,6 +32,11 @@ const librarySchema = new mongoose.Schema(
 
     address: String,
 
+    logo: {
+      type: String,
+      default: ""
+    },
+
     isActive: {
       type: Boolean,
       default: true

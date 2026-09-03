@@ -9,7 +9,7 @@ export const createSeat = async (req, res) => {
     const { libraryId, role } = req.user;
 
     // 🔒 Only owner or staff can create seats
-    if (!["owner", "staff"].includes(role)) {
+    if (!["owner", "branchAdmin", "staff"].includes(role)) {
       return res.status(403).json({
         message: "Access denied"
       });

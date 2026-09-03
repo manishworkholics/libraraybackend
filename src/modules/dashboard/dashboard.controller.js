@@ -924,3 +924,40 @@ export const getRecentActivities = async (req, res) => {
     });
   }
 };
+
+export const getTodayRenewals = async (req, res) => {
+  try {
+    const { libraryId } = req.user;
+    const startOfToday = new Date();
+    startOfToday.setHours(0, 0, 0, 0);
+    const endOfToday = new Date(startOfToday);
+    endOfToday.setDate(endOfToday.getDate() + 1);
+
+    const feeRecords = await Fees.find({
+      libraryId,
+      endDate: { $gte: startOfToday, $lt: endOfToday }
+    })
+      .populate({ path: "studentId", match: { status: "active" }, select: "name phone enrollmentNumber" })
+      .sort({ createdAt: -1 });
+
+    // A student can have older fee history; show only the latest matching one.
+    const seenStudents = new Set();
+    const renewals = feeRecords.reduce((list, fee) => {
+      if (!fee.studentId || seenStudents.has(String(fee.studentId._id))) return list;
+      seenStudents.add(String(fee.studentId._id));
+      list.push({
+        id: fee._id,
+        name: fee.studentId.name,
+        phone: fee.studentId.phone,
+        enrollmentNumber: fee.studentId.enrollmentNumber,
+        amount: fee.monthlyFees || fee.totalAmount || 0,
+        endDate: fee.endDate
+      });
+      return list;
+    }, []);
+
+    res.json({ count: renewals.length, renewals });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
