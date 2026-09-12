@@ -1,8 +1,11 @@
 import express from "express";
 import adminAuth from "../../middlewares/adminAuth.middleware.js";
+import spreadsheetUpload from "../../middlewares/spreadsheetUpload.middleware.js";
 import studentAuth from "../../middlewares/studentAuth.middleware.js";
 import {
   createStudent,
+  importStudents,
+  downloadStudentImportTemplate,
   getAllStudents,
   getStudentById,
   updateStudent,
@@ -27,6 +30,8 @@ router.post("/login", studentLogin);
 
 
 // 🔥 ADMIN ROUTES
+router.get("/import-template", adminAuth, downloadStudentImportTemplate);
+router.post("/import", adminAuth, spreadsheetUpload.single("file"), importStudents);
 router.post("/", adminAuth, createStudent);
 router.get("/", adminAuth, getAllStudents);
 

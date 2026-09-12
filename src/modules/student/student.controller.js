@@ -4,6 +4,78 @@ import Seat from "../seat/seat.model.js";
 import SeatBooking from "../commonmodel/seatBooking.model.js";
 import Library from "../commonmodel/Library.model.js";
 import bcrypt from "bcryptjs";
+import XLSX from "xlsx";
+
+const validStudyHours = [
+  "3 Hours", "4 Hours", "5 Hours", "6 Hours", "7 Hours",
+  "8 Hours", "9 Hours", "10 Hours", "11 Hours", "12 Hours",
+  "Full Day"
+];
+
+const getImportValue = (row, fieldNames) => {
+  const normalizedRow = Object.fromEntries(
+    Object.entries(row).map(([key, value]) => [
+      key.replace(/[^a-z0-9]/gi, "").toLowerCase(),
+      String(value ?? "").trim()
+    ])
+  );
+
+  for (const fieldName of fieldNames) {
+    const value = normalizedRow[fieldName.replace(/[^a-z0-9]/gi, "").toLowerCase()];
+    if (value !== undefined) return value;
+  }
+  return "";
+};
+
+const getEnrollmentPrefix = (libraryName = "") =>
+  libraryName.replace(/\s+/g, "").substring(0, 3).toUpperCase();
+
+const parseImportDate = (value) => {
+  if (!value) return null;
+
+  const normalizedValue = String(value).trim();
+
+  // XLSX stores real Excel dates as serial numbers. Read the serial directly
+  // instead of letting the server locale swap day and month.
+  if (/^\d{4,6}(?:\.\d+)?$/.test(normalizedValue)) {
+    const excelDate = XLSX.SSF.parse_date_code(Number(normalizedValue));
+    if (excelDate) {
+      return new Date(excelDate.y, excelDate.m - 1, excelDate.d);
+    }
+  }
+
+  // Excel exports commonly use DD-MM-YYYY / DD-MM-YYYY dates. JavaScript does
+  // not parse that format reliably, so construct the date explicitly.
+  const dayFirstMatch = normalizedValue.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/);
+  if (dayFirstMatch) {
+    const [, day, month, year] = dayFirstMatch;
+    const parsed = new Date(Number(year), Number(month) - 1, Number(day));
+    return (
+      parsed.getFullYear() === Number(year) &&
+      parsed.getMonth() === Number(month) - 1 &&
+      parsed.getDate() === Number(day)
+    ) ? parsed : null;
+  }
+
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+};
+
+export const downloadStudentImportTemplate = (req, res) => {
+  const rows = [
+    ["name", "fatherName", "phone", "address", "course", "studyHours", "documentNumber", "registrationDate", "dob", "gender", "email", "referralCode", "password"],
+    ["Mayank Porwal", "Ramesh Porwal", "9876543210", "Indore", "Competitive Exam", "10 Hours", "ID12345", "2026-09-01", "2002-08-15", "Male", "mayank@example.com", "REF101", ""],
+    ["Prakrati Mandwariya", "", "9876543211", "Sudama Nagar", "UPSC", "Full Day", "", "2026-09-02", "2003-01-10", "Female", "", "", ""]
+  ];
+  const worksheet = XLSX.utils.aoa_to_sheet(rows);
+  worksheet["!cols"] = rows[0].map((header) => ({ wch: Math.max(header.length + 2, 16) }));
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, worksheet, "Students");
+
+  res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+  res.setHeader("Content-Disposition", 'attachment; filename="student-import-template.xlsx"');
+  return res.send(XLSX.write(workbook, { type: "buffer", bookType: "xlsx" }));
+};
 
 /* Create Student */
 export const createStudent = async (req, res) => {
@@ -33,8 +105,7 @@ export const createStudent = async (req, res) => {
       !phone ||
       !address ||
       !course ||
-      !studyHours ||
-      !documentNumber
+      !studyHours
     ) {
 
       return res.status(400).json({
@@ -261,6 +332,10 @@ export const createStudent = async (req, res) => {
         password:
           hashedPassword,
 
+        // Manual registration always uses the date on which the admin creates
+        // the student. Imports set this value from the spreadsheet instead.
+        registrationDate: new Date(),
+
         libraryId
 
       });
@@ -327,6 +402,176 @@ export const createStudent = async (req, res) => {
 
 };
 
+/* Import students from XLSX, XLS, or CSV into the logged-in branch. */
+export const importStudents = async (req, res) => {
+  try {
+    if (!req.file?.buffer) {
+      return res.status(400).json({ message: "Please select an Excel or CSV file" });
+    }
+
+    const workbook = XLSX.read(req.file.buffer, { type: "buffer", cellDates: true });
+    const firstSheetName = workbook.SheetNames[0];
+    if (!firstSheetName) {
+      return res.status(400).json({ message: "The uploaded file has no worksheet" });
+    }
+
+    const worksheet = workbook.Sheets[firstSheetName];
+    const rows = XLSX.utils.sheet_to_json(worksheet, {
+      defval: "",
+      // Keep Excel serial values intact so date parsing is independent of the
+      // machine/Excel locale (DD-MM-YYYY must not become MM-DD-YYYY).
+      raw: true
+    });
+    if (!rows.length) {
+      return res.status(400).json({ message: "The uploaded worksheet has no student rows" });
+    }
+
+    // For date columns, use Excel's displayed cell text (cell.w). A workbook
+    // created on a month-first system can store `10-08-2026` internally as
+    // October 8 even though the user sees it as 10 August. Reading the visible
+    // DD-MM-YYYY text preserves the intended import date.
+    const dateColumnNames = new Set([
+      "dob", "dateofbirth", "registrationdate", "dateofregistration",
+      "joiningdate", "dateofjoining", "admissiondate", "dateofadmission",
+      "registration", "date"
+    ]);
+    const headers = XLSX.utils.sheet_to_json(worksheet, {
+      header: 1,
+      defval: "",
+      raw: false
+    })[0] || [];
+
+    rows.forEach((row, rowIndex) => {
+      headers.forEach((header, columnIndex) => {
+        const normalizedHeader = String(header).replace(/[^a-z0-9]/gi, "").toLowerCase();
+        const cell = worksheet[XLSX.utils.encode_cell({ r: rowIndex + 1, c: columnIndex })];
+        if (dateColumnNames.has(normalizedHeader) && cell?.w) {
+          row[header] = cell.w;
+        }
+      });
+    });
+
+    const { libraryId, parentLibraryId } = req.user;
+    const library = await Library.findById(parentLibraryId || libraryId).select("name");
+    if (!library) {
+      return res.status(404).json({ message: "Library not found" });
+    }
+
+    const existingStudents = await Student.find({ libraryId })
+      .select("phone email enrollmentNumber");
+    const existingPhones = new Set(existingStudents.map((student) => String(student.phone)));
+    const existingEmails = new Set(
+      existingStudents.filter((student) => student.email)
+        .map((student) => student.email.toLowerCase())
+    );
+    const importPhones = new Set();
+    const importEmails = new Set();
+
+    const prefix = getEnrollmentPrefix(library.name);
+    let nextEnrollmentNumber = existingStudents.reduce((highest, student) => {
+      const match = String(student.enrollmentNumber || "").match(new RegExp(`^${prefix}-(\\d+)$`));
+      return match ? Math.max(highest, Number(match[1])) : highest;
+    }, 0) + 1;
+
+    const imported = [];
+    const errors = [];
+
+    for (const [index, row] of rows.entries()) {
+      const rowNumber = index + 2;
+      const name = getImportValue(row, ["name", "studentName"]);
+      const fathername = getImportValue(row, ["fatherName", "fathername"]);
+      const phone = getImportValue(row, ["phone", "mobile", "mobileNumber"]).replace(/\D/g, "");
+      const email = getImportValue(row, ["email"]).toLowerCase();
+      const address = getImportValue(row, ["address"]);
+      const course = getImportValue(row, ["course"]);
+      const requestedStudyHours = getImportValue(row, ["studyHours", "hours"]);
+      const studyHours = validStudyHours.find(
+        (value) => value.toLowerCase() === requestedStudyHours.toLowerCase()
+      ) || "";
+      const documentNumber = getImportValue(row, ["documentNumber", "documentNo", "idNumber"]);
+      const dob = getImportValue(row, ["dob", "dateOfBirth"]);
+      const registrationDateValue = getImportValue(row, [
+        "registrationDate",
+        "dateOfRegistration",
+        "joiningDate",
+        "dateOfJoining",
+        "admissionDate",
+        "dateOfAdmission",
+        "registration",
+        "date"
+      ]);
+      const parsedDob = dob ? parseImportDate(dob) : null;
+      const registrationDate = registrationDateValue ? parseImportDate(registrationDateValue) : new Date();
+      const gender = getImportValue(row, ["gender"]);
+      const referralCode = getImportValue(row, ["referralCode", "referral"]);
+      const password = getImportValue(row, ["password"]);
+
+      const rowErrors = [];
+      if (!name || !phone || !address || !course || !studyHours) {
+        rowErrors.push("name, phone, address, course and studyHours are required");
+      }
+      if (phone && !/^\d{10}$/.test(phone)) rowErrors.push("phone must be exactly 10 digits");
+      if (requestedStudyHours && !studyHours) rowErrors.push("invalid studyHours");
+      if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) rowErrors.push("invalid email");
+      if (dob && !parsedDob) rowErrors.push("invalid dob (use YYYY-MM-DD or DD-MM-YYYY)");
+      if (registrationDateValue && !registrationDate) rowErrors.push("invalid registrationDate (use YYYY-MM-DD or DD-MM-YYYY)");
+      if (email && (existingEmails.has(email) || importEmails.has(email))) rowErrors.push("email already exists in this branch");
+      if (phone && (existingPhones.has(phone) || importPhones.has(phone))) rowErrors.push("phone already exists in this branch");
+      if (gender && !["Male", "Female", "Other"].includes(gender)) rowErrors.push("gender must be Male, Female, or Other");
+
+      if (rowErrors.length) {
+        errors.push({ row: rowNumber, message: rowErrors.join("; ") });
+        continue;
+      }
+
+      try {
+        const studentPassword = password || phone.slice(-6);
+        const enrollmentNumber = `${prefix}-${nextEnrollmentNumber}`;
+        const student = await Student.create({
+          name,
+          fathername,
+          dob: parsedDob || undefined,
+          registrationDate,
+          gender: gender || undefined,
+          email: email || undefined,
+          phone,
+          address,
+          course,
+          studyHours,
+          documentNumber,
+          referralCode: referralCode || undefined,
+          password: await bcrypt.hash(studentPassword, 10),
+          enrollmentNumber,
+          libraryId
+        });
+
+        // Advance the sequence only after MongoDB has accepted the student.
+        // A skipped/invalid Excel row must never consume an enrollment number.
+        nextEnrollmentNumber += 1;
+        existingPhones.add(phone);
+        importPhones.add(phone);
+        if (email) {
+          existingEmails.add(email);
+          importEmails.add(email);
+        }
+        imported.push({ row: rowNumber, id: student._id, enrollmentNumber: student.enrollmentNumber, name: student.name });
+      } catch (error) {
+        errors.push({ row: rowNumber, message: error.code === 11000 ? "duplicate data already exists" : error.message });
+      }
+    }
+
+    return res.status(201).json({
+      message: `${imported.length} student(s) imported successfully`,
+      importedCount: imported.length,
+      skippedCount: errors.length,
+      imported,
+      errors
+    });
+  } catch (error) {
+    return res.status(400).json({ message: `Import failed: ${error.message}` });
+  }
+};
+
 /* Get All Students (Library Only) */
 export const getAllStudents = async (req, res) => {
   try {
@@ -337,7 +582,7 @@ export const getAllStudents = async (req, res) => {
     const students = await Student.find({
       libraryId
     })
-      .sort({ createdAt: -1 });
+    .sort({ registrationDate: -1, createdAt: -1 });
 
     res.json({
       success: true,

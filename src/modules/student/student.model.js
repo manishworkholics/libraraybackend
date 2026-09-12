@@ -35,6 +35,11 @@ const studentSchema = new mongoose.Schema(
       type: Date
     },
 
+    registrationDate: {
+      type: Date,
+      default: Date.now
+    },
+
     gender: {
       type: String,
       enum: ["Male", "Female", "Other"]
@@ -42,7 +47,6 @@ const studentSchema = new mongoose.Schema(
 
     documentNumber: {
       type: String,
-      required: true,
       trim: true
     },
 

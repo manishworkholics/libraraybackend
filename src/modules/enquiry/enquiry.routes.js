@@ -7,10 +7,13 @@ import {
    updateEnquiry,
    deleteEnquiry,
    setDemoDate,
-   addRemark
+   addRemark,
+   importEnquiries,
+   downloadEnquiryImportTemplate
 } from "./enquiry.controller.js";
 
 import adminAuth from "../../middlewares/adminAuth.middleware.js";
+import spreadsheetUpload from "../../middlewares/spreadsheetUpload.middleware.js";
 
 const router = express.Router();
 
@@ -38,6 +41,9 @@ router.put("/remark/:id", adminAuth, addRemark);
 ========================================= */
 
 router.post("/", adminAuth, createEnquiry);
+
+router.get("/import-template", adminAuth, downloadEnquiryImportTemplate);
+router.post("/import", adminAuth, spreadsheetUpload.single("file"), importEnquiries);
 
 router.get("/", adminAuth, getAllEnquiries);
 

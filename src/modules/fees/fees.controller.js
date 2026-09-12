@@ -416,8 +416,27 @@ export const getRevenueStats = async (req, res) => {
       );
 
     // ✅ ACTIVE PLANS
-    const activePlans =
-      fees.length;
+    // A student can have many historical fee records. Count only that
+    // student's newest plan, and only when it has not expired.
+    const latestPlanByStudent = new Map();
+
+    fees.forEach((fee) => {
+      const studentKey = String(fee.studentId);
+      const currentPlan = latestPlanByStudent.get(studentKey);
+
+      if (
+        !currentPlan ||
+        new Date(fee.createdAt) > new Date(currentPlan.createdAt)
+      ) {
+        latestPlanByStudent.set(studentKey, fee);
+      }
+    });
+
+    const activePlans = Array.from(
+      latestPlanByStudent.values()
+    ).filter((fee) => {
+      return fee.endDate && new Date(fee.endDate) >= today;
+    }).length;
 
     // ✅ REGISTRATION REVENUE
     const registrationRevenue =
@@ -712,6 +731,16 @@ export const renewFees = async (req, res) => {
         0
       );
 
+    // Keep the renewal response and stored payment state consistent with the
+    // collected amount. This variable was previously referenced before being
+    // defined, which caused every renewal request to fail.
+    const paymentStatus =
+      newDueAmount === 0
+        ? "paid"
+        : paid > 0
+          ? "partial"
+          : "pending";
+
     const renewedFees =
       await Fees.create({
         studentId:
@@ -820,34 +849,28 @@ export const getRenewalList = async (req, res) => {
     const result = validFees
       .filter((f) => {
         const endDate = new Date(f.endDate);
-
         const feeMonth =
           endDate.getMonth() + 1;
-
         const feeYear =
           endDate.getFullYear();
 
-        // Current selected month
-        if (
-          feeMonth === selectedMonth &&
-          feeYear === selectedYear
-        ) {
-          return true;
-        }
+        const hasNewerRenewal = validFees.some(
+          (item) =>
+            item.studentId?._id.toString() === f.studentId._id.toString() &&
+            new Date(item.createdAt) > new Date(f.createdAt)
+        );
 
-        // Previous pending months
-        if (
+        const isSelectedMonth =
+          feeYear === selectedYear && feeMonth === selectedMonth;
+        const isOlderMonth =
           feeYear < selectedYear ||
-          (
-            feeYear === selectedYear &&
-            feeMonth < selectedMonth
-          )
-        ) {
-          return true;
-        }
+          (feeYear === selectedYear && feeMonth < selectedMonth);
 
-        // Future months hide
-        return false;
+        // The selected month's complete history is shown. From earlier
+        // months, show only records that still need renewal; completed older
+        // entries are hidden from later months' queues.
+        if (isSelectedMonth) return true;
+        return isOlderMonth && !hasNewerRenewal;
       })
       .map((f) => {
 

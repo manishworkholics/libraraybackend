@@ -39,6 +39,12 @@ const feesSchema = new mongoose.Schema(
     },
 
     // ✅ TOTAL AMOUNT
+    paymentStatus: {
+      type: String,
+      enum: ["paid", "partial", "pending"],
+      default: "pending"
+    },
+
     totalAmount: {
       type: Number,
       default: 0
