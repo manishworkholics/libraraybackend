@@ -6,6 +6,7 @@ import {
   createStudent,
   importStudents,
   downloadStudentImportTemplate,
+  exportStudents,
   getAllStudents,
   getStudentById,
   updateStudent,
@@ -31,6 +32,7 @@ router.post("/login", studentLogin);
 
 // 🔥 ADMIN ROUTES
 router.get("/import-template", adminAuth, downloadStudentImportTemplate);
+router.get("/export", adminAuth, exportStudents);
 router.post("/import", adminAuth, spreadsheetUpload.single("file"), importStudents);
 router.post("/", adminAuth, createStudent);
 router.get("/", adminAuth, getAllStudents);

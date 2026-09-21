@@ -9,7 +9,8 @@ import {
    setDemoDate,
    addRemark,
    importEnquiries,
-   downloadEnquiryImportTemplate
+   downloadEnquiryImportTemplate,
+   exportEnquiries
 } from "./enquiry.controller.js";
 
 import adminAuth from "../../middlewares/adminAuth.middleware.js";
@@ -43,6 +44,7 @@ router.put("/remark/:id", adminAuth, addRemark);
 router.post("/", adminAuth, createEnquiry);
 
 router.get("/import-template", adminAuth, downloadEnquiryImportTemplate);
+router.get("/export", adminAuth, exportEnquiries);
 router.post("/import", adminAuth, spreadsheetUpload.single("file"), importEnquiries);
 
 router.get("/", adminAuth, getAllEnquiries);

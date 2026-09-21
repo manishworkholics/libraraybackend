@@ -61,6 +61,48 @@ const parseImportDate = (value) => {
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 };
 
+const formatExcelDate = (value) => {
+  if (!value) return "";
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Asia/Kolkata",
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric"
+  }).formatToParts(new Date(value));
+  const getPart = (type) => parts.find((part) => part.type === type)?.value;
+  return `${getPart("year")}-${getPart("month")}-${getPart("day")}`;
+};
+
+export const exportStudents = async (req, res) => {
+  try {
+    const { libraryId } = req.user;
+    const students = await Student.find({ libraryId })
+      .sort({ registrationDate: -1, createdAt: -1 })
+      .lean();
+
+    const rows = [
+      ["Enrollment Number", "Name", "Father Name", "Phone", "Email", "Address", "DOB", "Gender", "Document Number", "Course", "Study Hours", "Registration Date", "Status", "Referral Code"],
+      ...students.map((student) => [
+        student.enrollmentNumber || "", student.name || "", student.fathername || "",
+        student.phone || "", student.email || "", student.address || "",
+        formatExcelDate(student.dob), student.gender || "", student.documentNumber || "",
+        student.course || "", student.studyHours || "", formatExcelDate(student.registrationDate),
+        student.status || "", student.referralCode || ""
+      ])
+    ];
+    const worksheet = XLSX.utils.aoa_to_sheet(rows);
+    worksheet["!cols"] = rows[0].map((header) => ({ wch: Math.max(header.length + 2, 16) }));
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Students");
+
+    res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    res.setHeader("Content-Disposition", 'attachment; filename="students.xlsx"');
+    return res.send(XLSX.write(workbook, { type: "buffer", bookType: "xlsx" }));
+  } catch (error) {
+    return res.status(500).json({ message: "Could not export students" });
+  }
+};
+
 export const downloadStudentImportTemplate = (req, res) => {
   const rows = [
     ["name", "fatherName", "phone", "address", "course", "studyHours", "documentNumber", "registrationDate", "dob", "gender", "email", "referralCode", "password"],
@@ -632,6 +674,12 @@ export const updateStudent = async (req, res) => {
 
     // ❌ Password update API se password mat update karo
     delete updateData.password;
+
+    // Persist the schema field name even if an older client sends camelCase.
+    if (Object.prototype.hasOwnProperty.call(updateData, "fatherName")) {
+      updateData.fathername = String(updateData.fatherName ?? "").trim();
+      delete updateData.fatherName;
+    }
 
     // ✅ Email Validation
     if (updateData.email) {

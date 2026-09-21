@@ -34,6 +34,45 @@ const parseImportDate = (value) => {
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 };
 
+const formatExcelDate = (value) => {
+  if (!value) return "";
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Asia/Kolkata",
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric"
+  }).formatToParts(new Date(value));
+  const getPart = (type) => parts.find((part) => part.type === type)?.value;
+  return `${getPart("year")}-${getPart("month")}-${getPart("day")}`;
+};
+
+export const exportEnquiries = async (req, res) => {
+  try {
+    const { libraryId } = req.user;
+    const enquiries = await Enquiry.find({ libraryId })
+      .sort({ date: -1, createdAt: -1 })
+      .lean();
+    const rows = [
+      ["Name", "Contact", "Address", "Course", "Status", "Source", "Notes", "Demo Date", "Remark", "Enquiry Date"],
+      ...enquiries.map((enquiry) => [
+        enquiry.name || "", enquiry.contact || "", enquiry.address || "", enquiry.course || "",
+        enquiry.status || "", enquiry.source || "", enquiry.notes || "", formatExcelDate(enquiry.demoDate),
+        enquiry.remark || "", formatExcelDate(enquiry.date)
+      ])
+    ];
+    const worksheet = XLSX.utils.aoa_to_sheet(rows);
+    worksheet["!cols"] = rows[0].map((header) => ({ wch: Math.max(header.length + 2, 16) }));
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Enquiries");
+
+    res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    res.setHeader("Content-Disposition", 'attachment; filename="enquiries.xlsx"');
+    return res.send(XLSX.write(workbook, { type: "buffer", bookType: "xlsx" }));
+  } catch (error) {
+    return res.status(500).json({ message: "Could not export enquiries" });
+  }
+};
+
 export const downloadEnquiryImportTemplate = (req, res) => {
   const rows = [
     ["name", "contact", "address", "course", "status", "notes", "demoDate", "remark", "date"],
@@ -184,7 +223,9 @@ export const getAllEnquiries = async (req, res) => {
       const end = new Date(date);
       end.setHours(23, 59, 59, 999);
 
-      query.createdAt = {
+      // `date` is the actual enquiry date (including the date supplied in an
+      // imported Excel row). `createdAt` is only when the row reached MongoDB.
+      query.date = {
         $gte: start,
         $lte: end
       };
@@ -194,9 +235,8 @@ export const getAllEnquiries = async (req, res) => {
     const pageLimit = Math.max(1, Number.parseInt(limit, 10) || 10);
 
     const enquiries = await Enquiry.find(query)
-      // Keep CSV/manual import order (oldest first). `_id` makes the order
-      // deterministic when multiple enquiries share the same createdAt value.
-      .sort({ createdAt: 1, _id: 1 })
+      // Show enquiries in their actual enquiry/import date order, not import time.
+      .sort({ date: -1, createdAt: -1, _id: -1 })
       .skip((pageNumber - 1) * pageLimit)
       .limit(pageLimit);
 
