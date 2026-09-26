@@ -41,7 +41,7 @@ const enquirySchema = new mongoose.Schema(
       type: String,
       trim: true
     },
-    
+
     /* NEW FIELD - DEMO DATE */
     demoDate: {
       type: Date,
@@ -54,7 +54,11 @@ const enquirySchema = new mongoose.Schema(
       trim: true,
       default: ""
     },
-
+    registered: {
+      type: Boolean,
+      default: false
+    },
+    
     libraryId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Library",

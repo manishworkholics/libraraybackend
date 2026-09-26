@@ -127,6 +127,7 @@ export const createStudent = async (req, res) => {
       name,
       fathername,
       fatherName,
+      registrationDate,
       dob,
       gender,
       email,
@@ -156,6 +157,17 @@ export const createStudent = async (req, res) => {
           "Please fill all required fields"
       });
 
+    }
+
+    const parsedRegistrationDate = registrationDate
+      ? parseImportDate(registrationDate)
+      : new Date();
+
+    if (!parsedRegistrationDate) {
+      return res.status(400).json({
+        success: false,
+        message: "Please enter a valid registration date"
+      });
     }
 
     // ✅ VALID STUDY HOURS
@@ -374,9 +386,7 @@ export const createStudent = async (req, res) => {
         password:
           hashedPassword,
 
-        // Manual registration always uses the date on which the admin creates
-        // the student. Imports set this value from the spreadsheet instead.
-        registrationDate: new Date(),
+        registrationDate: parsedRegistrationDate,
 
         libraryId
 
@@ -679,6 +689,17 @@ export const updateStudent = async (req, res) => {
     if (Object.prototype.hasOwnProperty.call(updateData, "fatherName")) {
       updateData.fathername = String(updateData.fatherName ?? "").trim();
       delete updateData.fatherName;
+    }
+
+    if (updateData.registrationDate) {
+      const parsedRegistrationDate = parseImportDate(updateData.registrationDate);
+      if (!parsedRegistrationDate) {
+        return res.status(400).json({
+          success: false,
+          message: "Please enter a valid registration date"
+        });
+      }
+      updateData.registrationDate = parsedRegistrationDate;
     }
 
     // ✅ Email Validation
@@ -996,7 +1017,6 @@ export const getAvailableSeats = async (req, res) => {
     res.status(500).json({ message: error.message });
   }
 };
-
 
 // 2️⃣ Book Seat
 export const bookSeat = async (req, res) => {
