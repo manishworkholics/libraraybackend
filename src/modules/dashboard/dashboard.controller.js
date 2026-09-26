@@ -6,9 +6,13 @@ import Fees from "../fees/fees.model.js";
 import Complaint from "../complaint/complaint.model.js";
 import Enquiry from "../enquiry/enquiry.model.js";
 
+
+// ======================================================
+// DASHBOARD STATS
+// ======================================================
+
 export const getDashboardStats = async (req, res) => {
   try {
-
     const { libraryId } = req.user;
 
     // 🔥 Local date range
@@ -46,7 +50,6 @@ export const getDashboardStats = async (req, res) => {
     // 🔥 Today's Attendance
     const todayAttendance = await Attendance.countDocuments({
       libraryId,
-
       checkInTime: {
         $gte: startOfDay,
         $lte: endOfDay
@@ -72,15 +75,20 @@ export const getDashboardStats = async (req, res) => {
       libraryId
     });
 
+    // 🔥 Total Enquiries
+    const totalEnquiries = await Enquiry.countDocuments({
+      libraryId
+    });
+
     res.json({
       totalStudents,
       todayAttendance,
       todayCollection,
-      totalFeesEntries
+      totalFeesEntries,
+      totalEnquiries
     });
 
   } catch (error) {
-
     console.error("DASHBOARD STATS ERROR:", error);
 
     res.status(500).json({
@@ -90,147 +98,124 @@ export const getDashboardStats = async (req, res) => {
   }
 };
 
+
+// ======================================================
+// ADMIN DASHBOARD
+// ======================================================
+
 export const getAdminDashboard = async (req, res) => {
-
   try {
+    const { libraryId } = req.user;
 
-    const { libraryId } =
-      req.user;
+    // ==========================================
+    // TODAY RANGE
+    // ==========================================
 
-    // ✅ TODAY RANGE
-    const now =
-      new Date();
+    const now = new Date();
 
-    const startOfDay =
-      new Date(
+    const startOfDay = new Date(
+      now.getFullYear(),
+      now.getMonth(),
+      now.getDate(),
+      0,
+      0,
+      0,
+      0
+    );
 
-        now.getFullYear(),
+    const endOfDay = new Date(
+      now.getFullYear(),
+      now.getMonth(),
+      now.getDate(),
+      23,
+      59,
+      59,
+      999
+    );
 
-        now.getMonth(),
 
-        now.getDate(),
-
-        0,
-        0,
-        0,
-        0
-
-      );
-
-    const endOfDay =
-      new Date(
-
-        now.getFullYear(),
-
-        now.getMonth(),
-
-        now.getDate(),
-
-        23,
-        59,
-        59,
-        999
-
-      );
-
+    // ==========================================
     // 1️⃣ TOTAL ACTIVE STUDENTS
-    const totalStudents =
-      await Student.countDocuments({
+    // ==========================================
 
-        libraryId,
+    const totalStudents = await Student.countDocuments({
+      libraryId,
+      status: "active"
+    });
 
-        status:
-          "active"
 
-      });
-
+    // ==========================================
     // 2️⃣ TOTAL SEATS
-    const totalSeats =
-      await Seat.countDocuments({
+    // ==========================================
 
-        libraryId
+    const totalSeats = await Seat.countDocuments({
+      libraryId
+    });
 
-      });
 
+    // ==========================================
     // 3️⃣ OCCUPIED SEATS
-    const occupiedSeats =
-      await SeatBooking.distinct(
+    // ==========================================
 
-        "seatId",
+    const occupiedSeats = await SeatBooking.distinct(
+      "seatId",
+      {
+        libraryId,
+        status: "active"
+      }
+    );
 
-        {
+    const occupiedCount = occupiedSeats.length;
 
-          libraryId,
 
-          status:
-            "active"
-
-        }
-
-      );
-
-    const occupiedCount =
-      occupiedSeats.length;
-
+    // ==========================================
     // 4️⃣ AVAILABLE SEATS
+    // ==========================================
+
     const availableSeats =
+      totalSeats - occupiedCount;
 
-      totalSeats -
 
-      occupiedCount;
-
+    // ==========================================
     // 5️⃣ TODAY ATTENDANCE
+    // ==========================================
+
     const todayAttendance =
       await Attendance.countDocuments({
-
         libraryId,
-
         checkInTime: {
-
-          $gte:
-            startOfDay,
-
-          $lte:
-            endOfDay
-
+          $gte: startOfDay,
+          $lte: endOfDay
         }
-
       });
 
+
+    // ==========================================
     // 6️⃣ TODAY REVENUE
+    // ==========================================
+
     const todayFeesRecords =
       await Fees.find({
-
         libraryId,
-
         paymentDate: {
-
-          $gte:
-            startOfDay,
-
-          $lte:
-            endOfDay
-
+          $gte: startOfDay,
+          $lte: endOfDay
         }
-
       });
 
     const todayRevenue =
       todayFeesRecords.reduce(
-
         (sum, item) =>
-
           sum +
-
-          Number(
-            item.totalAmount || 0
-          ),
-
+          Number(item.totalAmount || 0),
         0
-
       );
 
+
+    // ==========================================
     // 7️⃣ PENDING RENEWALS
+    // ==========================================
+
     const currentMonth =
       new Date().getMonth();
 
@@ -239,12 +224,8 @@ export const getAdminDashboard = async (req, res) => {
 
     const activeStudents =
       await Student.find({
-
         libraryId,
-
-        status:
-          "active"
-
+        status: "active"
       });
 
     let pendingBills = 0;
@@ -254,31 +235,20 @@ export const getAdminDashboard = async (req, res) => {
       // ✅ LATEST FEES
       const latestFees =
         await Fees.findOne({
-
           libraryId,
-
-          studentId:
-            student._id
-
+          studentId: student._id
         }).sort({
-
-          createdAt:
-            -1
-
+          createdAt: -1
         });
 
       // ❌ NO FEES
-      if (!latestFees)
-        continue;
+      if (!latestFees) continue;
 
       // ❌ NO END DATE
-      if (!latestFees.endDate)
-        continue;
+      if (!latestFees.endDate) continue;
 
       const expiryDate =
-        new Date(
-          latestFees.endDate
-        );
+        new Date(latestFees.endDate);
 
       const expiryMonth =
         expiryDate.getMonth();
@@ -288,22 +258,19 @@ export const getAdminDashboard = async (req, res) => {
 
       // ✅ CURRENT MONTH EXPIRED
       if (
-
         expiryMonth === currentMonth &&
-
         expiryYear === currentYear &&
-
         expiryDate < new Date()
-
       ) {
-
         pendingBills++;
-
       }
-
     }
 
+
+    // ==========================================
     // 8️⃣ PENDING COMPLAINTS
+    // ==========================================
+
     let pendingComplaints = 0;
 
     try {
@@ -312,12 +279,8 @@ export const getAdminDashboard = async (req, res) => {
 
         pendingComplaints =
           await Complaint.countDocuments({
-
             libraryId,
-
-            status:
-              "pending"
-
+            status: "pending"
           });
 
       }
@@ -325,14 +288,26 @@ export const getAdminDashboard = async (req, res) => {
     } catch (err) {
 
       console.log(
-
         "Complaint fetch error:",
-
         err.message
-
       );
 
     }
+
+
+    // ==========================================
+    // 9️⃣ TOTAL ENQUIRIES
+    // ==========================================
+
+    const totalEnquiries =
+      await Enquiry.countDocuments({
+        libraryId
+      });
+
+
+    // ==========================================
+    // RESPONSE
+    // ==========================================
 
     res.json({
 
@@ -351,57 +326,97 @@ export const getAdminDashboard = async (req, res) => {
 
       pendingBills,
 
-      pendingComplaints
+      pendingComplaints,
+
+      totalEnquiries
 
     });
 
   } catch (error) {
 
     console.error(
-
       "ADMIN DASHBOARD ERROR:",
-
       error
-
     );
 
     res.status(500).json({
-
       message:
         error.message
-
     });
 
   }
-
 };
+
+
+// ======================================================
+// LAST 7 DAYS REVENUE
+// ======================================================
 
 export const getLast7DaysRevenue = async (req, res) => {
-  const { libraryId } = req.user;
 
-  const sevenDaysAgo = new Date();
-  sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+  try {
 
-  const revenue = await Payment.aggregate([
-    {
-      $match: {
-        libraryId,
-        createdAt: { $gte: sevenDaysAgo }
-      }
-    },
-    {
-      $group: {
-        _id: {
-          $dayOfMonth: "$createdAt"
+    const { libraryId } = req.user;
+
+    const sevenDaysAgo =
+      new Date();
+
+    sevenDaysAgo.setDate(
+      sevenDaysAgo.getDate() - 7
+    );
+
+    const revenue =
+      await Payment.aggregate([
+        {
+          $match: {
+            libraryId,
+            createdAt: {
+              $gte: sevenDaysAgo
+            }
+          }
         },
-        total: { $sum: "$amount" }
-      }
-    },
-    { $sort: { "_id": 1 } }
-  ]);
 
-  res.json(revenue);
+        {
+          $group: {
+            _id: {
+              $dayOfMonth:
+                "$createdAt"
+            },
+
+            total: {
+              $sum: "$amount"
+            }
+          }
+        },
+
+        {
+          $sort: {
+            "_id": 1
+          }
+        }
+      ]);
+
+    res.json(revenue);
+
+  } catch (error) {
+
+    console.error(
+      "LAST 7 DAYS REVENUE ERROR:",
+      error
+    );
+
+    res.status(500).json({
+      message:
+        error.message
+    });
+
+  }
 };
+
+
+// ======================================================
+// GRAPH DATA
+// ======================================================
 
 export const getGraphData = async (req, res) => {
 
@@ -420,7 +435,11 @@ export const getGraphData = async (req, res) => {
 
     let labels = [];
 
+
+    // ==========================================
     // 🔥 7 DAYS
+    // ==========================================
+
     if (range === "7days") {
 
       for (let i = 6; i >= 0; i--) {
@@ -438,8 +457,7 @@ export const getGraphData = async (req, res) => {
             d.toLocaleDateString(
               "en-US",
               {
-                weekday:
-                  "short"
+                weekday: "short"
               }
             ),
 
@@ -469,7 +487,11 @@ export const getGraphData = async (req, res) => {
 
     }
 
+
+    // ==========================================
     // 🔥 30 DAYS
+    // ==========================================
+
     else if (range === "30days") {
 
       for (let i = 29; i >= 0; i--) {
@@ -512,18 +534,18 @@ export const getGraphData = async (req, res) => {
 
     }
 
+
+    // ==========================================
     // 🔥 MONTHLY
+    // ==========================================
+
     else if (range === "monthly") {
 
       const daysInMonth =
         new Date(
-
           now.getFullYear(),
-
           now.getMonth() + 1,
-
           0
-
         ).getDate();
 
       for (
@@ -534,13 +556,9 @@ export const getGraphData = async (req, res) => {
 
         const d =
           new Date(
-
             now.getFullYear(),
-
             now.getMonth(),
-
             i
-
           );
 
         labels.push({
@@ -574,36 +592,31 @@ export const getGraphData = async (req, res) => {
 
     }
 
+
+    // ==========================================
     // 🔥 YEARLY
+    // ==========================================
+
     else if (range === "yearly") {
 
       for (let i = 0; i < 12; i++) {
 
         const start =
           new Date(
-
             now.getFullYear(),
-
             i,
-
             1
-
           );
 
         const end =
           new Date(
-
             now.getFullYear(),
-
             i + 1,
-
             0,
-
             23,
             59,
             59,
             999
-
           );
 
         labels.push({
@@ -612,8 +625,7 @@ export const getGraphData = async (req, res) => {
             start.toLocaleString(
               "default",
               {
-                month:
-                  "short"
+                month: "short"
               }
             ),
 
@@ -627,7 +639,11 @@ export const getGraphData = async (req, res) => {
 
     }
 
+
+    // ==========================================
     // 🔥 DEFAULT 7 DAYS
+    // ==========================================
+
     else {
 
       for (let i = 6; i >= 0; i--) {
@@ -645,8 +661,7 @@ export const getGraphData = async (req, res) => {
             d.toLocaleDateString(
               "en-US",
               {
-                weekday:
-                  "short"
+                weekday: "short"
               }
             ),
 
@@ -676,9 +691,14 @@ export const getGraphData = async (req, res) => {
 
     }
 
+
     let data = [];
 
+
+    // ==========================================
     // 🔥 STUDENTS GRAPH
+    // ==========================================
+
     if (type === "students") {
 
       for (const item of labels) {
@@ -689,13 +709,11 @@ export const getGraphData = async (req, res) => {
             libraryId,
 
             createdAt: {
-
               $gte:
                 item.start,
 
               $lte:
                 item.end
-
             }
 
           });
@@ -714,7 +732,11 @@ export const getGraphData = async (req, res) => {
 
     }
 
+
+    // ==========================================
     // 🔥 REVENUE GRAPH
+    // ==========================================
+
     else if (type === "revenue") {
 
       for (const item of labels) {
@@ -765,7 +787,11 @@ export const getGraphData = async (req, res) => {
 
     }
 
+
+    // ==========================================
     // 🔥 ATTENDANCE GRAPH
+    // ==========================================
+
     else if (type === "attendance") {
 
       for (const item of labels) {
@@ -801,7 +827,51 @@ export const getGraphData = async (req, res) => {
 
     }
 
+
+    // ==========================================
+    // 🔥 ENQUIRIES GRAPH
+    // ==========================================
+
+    else if (type === "enquiries") {
+
+      for (const item of labels) {
+
+        const total =
+          await Enquiry.countDocuments({
+
+            libraryId,
+
+            date: {
+
+              $gte:
+                item.start,
+
+              $lte:
+                item.end
+
+            }
+
+          });
+
+        data.push({
+
+          label:
+            item.label,
+
+          value:
+            total
+
+        });
+
+      }
+
+    }
+
+
+    // ==========================================
     // 🔥 SEATS GRAPH
+    // ==========================================
+
     else if (type === "seats") {
 
       const totalSeats =
@@ -812,17 +882,24 @@ export const getGraphData = async (req, res) => {
         });
 
       data =
-        labels.map(item => ({
+        labels.map(
+          (item) => ({
 
-          label:
-            item.label,
+            label:
+              item.label,
 
-          value:
-            totalSeats
+            value:
+              totalSeats
 
-        }));
+          })
+        );
 
     }
+
+
+    // ==========================================
+    // RESPONSE
+    // ==========================================
 
     res.json(data);
 
@@ -844,120 +921,311 @@ export const getGraphData = async (req, res) => {
 
 };
 
+
+// ======================================================
+// RECENT ACTIVITIES
+// ======================================================
+
 export const getRecentActivities = async (req, res) => {
+
   try {
-    const { libraryId } = req.user;
+
+    const { libraryId } =
+      req.user;
+
 
     // Attendance
-    const attendance = await Attendance.find({
-      libraryId
-    })
-      .populate("studentId", "name")
-      .sort({ createdAt: -1 })
-      .limit(5);
+    const attendance =
+      await Attendance.find({
+        libraryId
+      })
+        .populate(
+          "studentId",
+          "name"
+        )
+        .sort({
+          createdAt: -1
+        })
+        .limit(5);
+
 
     // Renewals
-    const renewals = await Fees.find({
-      libraryId
-    })
-      .populate("studentId", "name")
-      .sort({ createdAt: -1 })
-      .limit(5);
+    const renewals =
+      await Fees.find({
+        libraryId
+      })
+        .populate(
+          "studentId",
+          "name"
+        )
+        .sort({
+          createdAt: -1
+        })
+        .limit(5);
+
 
     // Website Enquiries
-    const enquiries = await Enquiry.find({
-      libraryId,
-      source: "website"
-    })
-      .sort({ createdAt: -1 })
-      .limit(5);
+    const enquiries =
+      await Enquiry.find({
+        libraryId,
+        source: "website"
+      })
+        .sort({
+          createdAt: -1
+        })
+        .limit(5);
+
 
     const activities = [];
 
+
     // Attendance Activities
-    attendance.forEach((item) => {
-      activities.push({
-        type: "attendance",
-        name: item.studentId?.name || "Student",
-        message: "Marked Present",
-        createdAt: item.createdAt
-      });
-    });
+    attendance.forEach(
+      (item) => {
+
+        activities.push({
+
+          type:
+            "attendance",
+
+          name:
+            item.studentId?.name ||
+            "Student",
+
+          message:
+            "Marked Present",
+
+          createdAt:
+            item.createdAt
+
+        });
+
+      }
+    );
+
 
     // Renewal Activities
-    renewals.forEach((item) => {
-      activities.push({
-        type: "renewal",
-        name: item.studentId?.name || "Student",
-        message: "Renewed Membership",
-        createdAt: item.createdAt
-      });
-    });
+    renewals.forEach(
+      (item) => {
+
+        activities.push({
+
+          type:
+            "renewal",
+
+          name:
+            item.studentId?.name ||
+            "Student",
+
+          message:
+            "Renewed Membership",
+
+          createdAt:
+            item.createdAt
+
+        });
+
+      }
+    );
+
 
     // Enquiry Activities
-    enquiries.forEach((item) => {
-      activities.push({
-        type: "enquiry",
-        name: item.name,
-        message: `${item.course} enquiry received`,
-        createdAt: item.createdAt
-      });
-    });
+    enquiries.forEach(
+      (item) => {
+
+        activities.push({
+
+          type:
+            "enquiry",
+
+          name:
+            item.name,
+
+          message:
+            `${item.course} enquiry received`,
+
+          createdAt:
+            item.createdAt
+
+        });
+
+      }
+    );
+
 
     // Sort all activities by latest first
     activities.sort(
       (a, b) =>
-        new Date(b.createdAt) -
-        new Date(a.createdAt)
+        new Date(
+          b.createdAt
+        ) -
+        new Date(
+          a.createdAt
+        )
     );
+
 
     return res.status(200).json(
       activities.slice(0, 8)
     );
 
   } catch (error) {
-    console.error("Recent Activity Error:", error);
+
+    console.error(
+      "Recent Activity Error:",
+      error
+    );
 
     return res.status(500).json({
+
       success: false,
-      message: error.message
+
+      message:
+        error.message
+
     });
+
   }
+
 };
 
+
+// ======================================================
+// TODAY RENEWALS
+// ======================================================
+
 export const getTodayRenewals = async (req, res) => {
+
   try {
-    const { libraryId } = req.user;
-    const startOfToday = new Date();
-    startOfToday.setHours(0, 0, 0, 0);
-    const endOfToday = new Date(startOfToday);
-    endOfToday.setDate(endOfToday.getDate() + 1);
 
-    const feeRecords = await Fees.find({
-      libraryId,
-      endDate: { $gte: startOfToday, $lt: endOfToday }
-    })
-      .populate({ path: "studentId", match: { status: "active" }, select: "name phone enrollmentNumber" })
-      .sort({ createdAt: -1 });
+    const { libraryId } =
+      req.user;
 
-    // A student can have older fee history; show only the latest matching one.
-    const seenStudents = new Set();
-    const renewals = feeRecords.reduce((list, fee) => {
-      if (!fee.studentId || seenStudents.has(String(fee.studentId._id))) return list;
-      seenStudents.add(String(fee.studentId._id));
-      list.push({
-        id: fee._id,
-        name: fee.studentId.name,
-        phone: fee.studentId.phone,
-        enrollmentNumber: fee.studentId.enrollmentNumber,
-        amount: fee.monthlyFees || fee.totalAmount || 0,
-        endDate: fee.endDate
-      });
-      return list;
-    }, []);
+    const startOfToday =
+      new Date();
 
-    res.json({ count: renewals.length, renewals });
+    startOfToday.setHours(
+      0,
+      0,
+      0,
+      0
+    );
+
+    const endOfToday =
+      new Date(startOfToday);
+
+    endOfToday.setDate(
+      endOfToday.getDate() + 1
+    );
+
+
+    const feeRecords =
+      await Fees.find({
+
+        libraryId,
+
+        endDate: {
+          $gte:
+            startOfToday,
+
+          $lt:
+            endOfToday
+        }
+
+      })
+        .populate({
+
+          path:
+            "studentId",
+
+          match: {
+            status: "active"
+          },
+
+          select:
+            "name phone enrollmentNumber"
+
+        })
+        .sort({
+          createdAt: -1
+        });
+
+
+    // A student can have older fee history;
+    // show only the latest matching one.
+    const seenStudents =
+      new Set();
+
+    const renewals =
+      feeRecords.reduce(
+        (list, fee) => {
+
+          if (
+            !fee.studentId ||
+            seenStudents.has(
+              String(
+                fee.studentId._id
+              )
+            )
+          ) {
+            return list;
+          }
+
+          seenStudents.add(
+            String(
+              fee.studentId._id
+            )
+          );
+
+          list.push({
+
+            id:
+              fee._id,
+
+            name:
+              fee.studentId.name,
+
+            phone:
+              fee.studentId.phone,
+
+            enrollmentNumber:
+              fee.studentId.enrollmentNumber,
+
+            amount:
+              fee.monthlyFees ||
+              fee.totalAmount ||
+              0,
+
+            endDate:
+              fee.endDate
+
+          });
+
+          return list;
+
+        },
+        []
+      );
+
+
+    res.json({
+
+      count:
+        renewals.length,
+
+      renewals
+
+    });
+
   } catch (error) {
-    res.status(500).json({ message: error.message });
+
+    res.status(500).json({
+
+      message:
+        error.message
+
+    });
+
   }
+
 };

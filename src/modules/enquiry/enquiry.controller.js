@@ -1,5 +1,6 @@
 import Enquiry from "./enquiry.model.js";
 import XLSX from "xlsx";
+import Student from "../student/student.model.js"
 
 const getImportValue = (row, fieldNames) => {
   const normalizedRow = Object.fromEntries(
@@ -181,7 +182,6 @@ export const createEnquiry = async (req, res) => {
 ========================================= */
 export const getAllEnquiries = async (req, res) => {
   try {
-
     const { libraryId } = req.user;
 
     const {
@@ -191,56 +191,112 @@ export const getAllEnquiries = async (req, res) => {
       date
     } = req.query;
 
-    const query = {
-      libraryId
-    };
+    const filters = [
+      {
+        libraryId
+      },
+
+      // New registration ke baad registered=true wali enquiry hide
+      {
+        registered: { $ne: true }
+      }
+    ];
 
     // 🔍 SEARCH FILTER
-    if (search) {
-
-      query.$or = [
-        {
-          name: {
-            $regex: search,
-            $options: "i"
+    if (search.trim()) {
+      filters.push({
+        $or: [
+          {
+            name: {
+              $regex: search.trim(),
+              $options: "i"
+            }
+          },
+          {
+            contact: {
+              $regex: search.trim(),
+              $options: "i"
+            }
           }
-        },
-        {
-          contact: {
-            $regex: search,
-            $options: "i"
-          }
-        }
-      ];
+        ]
+      });
     }
 
     // 📅 DATE FILTER
     if (date) {
-
       const start = new Date(date);
       start.setHours(0, 0, 0, 0);
 
       const end = new Date(date);
       end.setHours(23, 59, 59, 999);
 
-      // `date` is the actual enquiry date (including the date supplied in an
-      // imported Excel row). `createdAt` is only when the row reached MongoDB.
-      query.date = {
-        $gte: start,
-        $lte: end
-      };
+      filters.push({
+        date: {
+          $gte: start,
+          $lte: end
+        }
+      });
     }
 
-    const pageNumber = Math.max(1, Number.parseInt(page, 10) || 1);
-    const pageLimit = Math.max(1, Number.parseInt(limit, 10) || 10);
+    /*
+     * 🔥 OLD REGISTERED STUDENTS
+     *
+     * Student collection se registered students ke phone numbers
+     * nikal rahe hain.
+     */
+    const registeredStudents = await Student.find(
+      {
+        libraryId
+      },
+      {
+        phone: 1,
+        _id: 0
+      }
+    ).lean();
 
-    const enquiries = await Enquiry.find(query)
-      // Show enquiries in their actual enquiry/import date order, not import time.
-      .sort({ date: -1, createdAt: -1, _id: -1 })
-      .skip((pageNumber - 1) * pageLimit)
-      .limit(pageLimit);
+    const registeredPhones = registeredStudents
+      .map((student) => String(student.phone || "").trim())
+      .filter(Boolean);
 
+    /*
+     * Agar students hain to unke phone wali enquiries hide karo.
+     */
+    if (registeredPhones.length > 0) {
+      filters.push({
+        contact: {
+          $nin: registeredPhones
+        }
+      });
+    }
+
+    // Final query
+    const query = {
+      $and: filters
+    };
+
+    const pageNumber = Math.max(
+      1,
+      Number.parseInt(page, 10) || 1
+    );
+
+    const pageLimit = Math.max(
+      1,
+      Number.parseInt(limit, 10) || 10
+    );
+
+    // 📊 TOTAL
     const total = await Enquiry.countDocuments(query);
+
+    // 📄 ENQUIRIES
+    const enquiries = await Enquiry.find(query)
+      .sort({
+        date: -1,
+        createdAt: -1,
+        _id: -1
+      })
+      .skip((pageNumber - 1) * pageLimit)
+      .limit(pageLimit)
+      .lean();
 
     res.json({
       total,
@@ -250,11 +306,11 @@ export const getAllEnquiries = async (req, res) => {
     });
 
   } catch (error) {
+    console.error("Get All Enquiries Error:", error);
 
     res.status(500).json({
       message: error.message
     });
-
   }
 };
 
