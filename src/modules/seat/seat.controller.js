@@ -391,6 +391,54 @@ export const bookSeat = async (req, res) => {
   }
 };
 
+export const releaseSeat = async (req, res) => {
+  try {
+    const { seatId } = req.params;
+    const { libraryId } = req.user;
+
+    // Check seat belongs to this library
+    const seat = await Seat.findOne({
+      _id: seatId,
+      libraryId
+    });
+
+    if (!seat) {
+      return res.status(404).json({
+        message: "Seat not found in your library"
+      });
+    }
+
+    // Find active booking
+    const booking = await SeatBooking.findOne({
+      seatId,
+      libraryId,
+      status: "active"
+    });
+
+    if (!booking) {
+      return res.status(400).json({
+        message: "Seat is already vacant"
+      });
+    }
+
+    // Release booking
+    booking.status = "cancelled";
+    booking.expiryTime = new Date();
+
+    await booking.save();
+
+    res.status(200).json({
+      message: "Seat is now vacant",
+      booking
+    });
+
+  } catch (error) {
+    res.status(500).json({
+      message: error.message
+    });
+  }
+};
+
 export const cancelSeatBooking = async (req, res) => {
   try {
     const { userId: studentId } = req.user;
