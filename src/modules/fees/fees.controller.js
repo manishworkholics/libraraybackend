@@ -1622,7 +1622,6 @@ export const getRenewalList = async (req, res) => {
     const fees = await Fees.find({
       libraryId,
     })
-
       .populate(
         "studentId",
         "name enrollmentNumber phone status"
@@ -1715,7 +1714,7 @@ export const getRenewalList = async (req, res) => {
           (renewal) =>
             renewal.transactionType === "renewal" &&
             String(renewal.renewedFromFeeId || "") ===
-            String(fee._id)
+              String(fee._id)
         )
         .sort(
           (a, b) =>
@@ -1727,6 +1726,7 @@ export const getRenewalList = async (req, res) => {
         (exactRenewalKey
           ? renewalMap.get(exactRenewalKey) || null
           : null);
+
       // SUPPORT EARLY RENEWALS
       if (!completedRenewal && studentId) {
         const studentRenewals =
@@ -1787,7 +1787,6 @@ export const getRenewalList = async (req, res) => {
       }
     }
 
-
     // ==========================================================
     // FORMAT RESPONSE
     // ==========================================================
@@ -1808,9 +1807,18 @@ export const getRenewalList = async (req, res) => {
             ? new Date(completedRenewal.paymentDate)
             : null;
 
+        // Check whether a renewal payment exists in selected month.
+        // This check does not depend on whether the renewal is fully paid.
+        const hasRenewalThisMonth = Boolean(
+          completedRenewalPayment &&
+          !Number.isNaN(completedRenewalPayment.getTime()) &&
+          completedRenewalPayment >= startDate &&
+          completedRenewalPayment < endDate
+        );
+
         // A renewal record by itself is not proof of a completed renewal.
-        // If its payment receipt was deleted (or it still has a balance), the
-        // renewal must return to Pending in the renewal list.
+        // If its payment receipt was deleted (or it still has a balance),
+        // the renewal must return to Pending in the renewal list.
         const completedRenewalIsSettled = Boolean(
           completedRenewal &&
           Number(completedRenewal.dueAmount || 0) <= 0 &&
@@ -1839,6 +1847,7 @@ export const getRenewalList = async (req, res) => {
           cashAmount + onlineAmount;
 
         const dueAmount = Number(fee.dueAmount) || 0;
+
         const previousDueAmount = dueAmount;
 
         let finalPaymentStatus = String(
@@ -1901,6 +1910,7 @@ export const getRenewalList = async (req, res) => {
           dueAmount,
           paymentStatus: finalPaymentStatus,
           previousDueAmount,
+
           // Renewal status
           status,
           isRenewed,
@@ -1989,7 +1999,7 @@ export const getRenewalList = async (req, res) => {
               : "New Admission",
 
           // Action
-          canRenew: true,
+          canRenew: !hasRenewalThisMonth,
         };
       }
     );
