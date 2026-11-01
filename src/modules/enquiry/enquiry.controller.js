@@ -178,8 +178,10 @@ export const createEnquiry = async (req, res) => {
 };
 
 /* =========================================
-   📋 GET ALL ENQUIRIES (Pagination + Search)
+   📋 GET ALL ENQUIRIES
+   Pagination + Search + Date Filter
 ========================================= */
+
 export const getAllEnquiries = async (req, res) => {
   try {
     const { libraryId } = req.user;
@@ -188,41 +190,46 @@ export const getAllEnquiries = async (req, res) => {
       page = 1,
       limit = 10,
       search = "",
-      date
+      date,
     } = req.query;
+
+    // =========================================================
+    // BASE FILTER
+    // =========================================================
 
     const filters = [
       {
-        libraryId
+        libraryId,
       },
-
-      // New registration ke baad registered=true wali enquiry hide
-      {
-        registered: { $ne: true }
-      }
     ];
 
+    // =========================================================
     // 🔍 SEARCH FILTER
+    // =========================================================
+
     if (search.trim()) {
       filters.push({
         $or: [
           {
             name: {
               $regex: search.trim(),
-              $options: "i"
-            }
+              $options: "i",
+            },
           },
           {
             contact: {
               $regex: search.trim(),
-              $options: "i"
-            }
-          }
-        ]
+              $options: "i",
+            },
+          },
+        ],
       });
     }
 
+    // =========================================================
     // 📅 DATE FILTER
+    // =========================================================
+
     if (date) {
       const start = new Date(date);
       start.setHours(0, 0, 0, 0);
@@ -233,46 +240,69 @@ export const getAllEnquiries = async (req, res) => {
       filters.push({
         date: {
           $gte: start,
-          $lte: end
-        }
+          $lte: end,
+        },
       });
     }
 
-    /*
-     * 🔥 OLD REGISTERED STUDENTS
-     *
-     * Student collection se registered students ke phone numbers
-     * nikal rahe hain.
-     */
+    // =========================================================
+    // 🔥 GET REGISTERED STUDENT PHONE NUMBERS
+    //
+    // Student collection is the SOURCE OF TRUTH.
+    //
+    // If student exists:
+    //    → matching enquiry will be hidden
+    //
+    // If student is deleted:
+    //    → phone no longer exists in Student collection
+    //    → enquiry automatically appears again
+    //
+    // Do NOT use enquiry.registered here.
+    // =========================================================
+
     const registeredStudents = await Student.find(
       {
-        libraryId
+        libraryId,
       },
       {
         phone: 1,
-        _id: 0
+        _id: 0,
       }
     ).lean();
 
+    // =========================================================
+    // NORMALIZE STUDENT PHONE NUMBERS
+    // =========================================================
+
     const registeredPhones = registeredStudents
-      .map((student) => String(student.phone || "").trim())
+      .map((student) =>
+        String(student.phone || "").trim()
+      )
       .filter(Boolean);
 
-    /*
-     * Agar students hain to unke phone wali enquiries hide karo.
-     */
+    // =========================================================
+    // HIDE ENQUIRIES WHOSE STUDENT IS CURRENTLY REGISTERED
+    // =========================================================
+
     if (registeredPhones.length > 0) {
       filters.push({
         contact: {
-          $nin: registeredPhones
-        }
+          $nin: registeredPhones,
+        },
       });
     }
 
-    // Final query
+    // =========================================================
+    // FINAL QUERY
+    // =========================================================
+
     const query = {
-      $and: filters
+      $and: filters,
     };
+
+    // =========================================================
+    // PAGINATION
+    // =========================================================
 
     const pageNumber = Math.max(
       1,
@@ -284,32 +314,52 @@ export const getAllEnquiries = async (req, res) => {
       Number.parseInt(limit, 10) || 10
     );
 
-    // 📊 TOTAL
-    const total = await Enquiry.countDocuments(query);
+    const skip =
+      (pageNumber - 1) * pageLimit;
 
-    // 📄 ENQUIRIES
-    const enquiries = await Enquiry.find(query)
-      .sort({
-        date: -1,
-        createdAt: -1,
-        _id: -1
-      })
-      .skip((pageNumber - 1) * pageLimit)
-      .limit(pageLimit)
-      .lean();
+    // =========================================================
+    // 📊 TOTAL COUNT
+    // =========================================================
 
-    res.json({
+    const total =
+      await Enquiry.countDocuments(query);
+
+    // =========================================================
+    // 📄 GET ENQUIRIES
+    // =========================================================
+
+    const enquiries =
+      await Enquiry.find(query)
+        .sort({
+          date: -1,
+          createdAt: -1,
+          _id: -1,
+        })
+        .skip(skip)
+        .limit(pageLimit)
+        .lean();
+
+    // =========================================================
+    // RESPONSE
+    // =========================================================
+
+    return res.status(200).json({
       total,
       page: pageNumber,
-      pages: Math.ceil(total / pageLimit),
-      enquiries
+      pages: Math.ceil(
+        total / pageLimit
+      ),
+      enquiries,
     });
 
   } catch (error) {
-    console.error("Get All Enquiries Error:", error);
+    console.error(
+      "Get All Enquiries Error:",
+      error
+    );
 
-    res.status(500).json({
-      message: error.message
+    return res.status(500).json({
+      message: error.message,
     });
   }
 };

@@ -1,4 +1,5 @@
 import Fees from "./fees.model.js";
+import FeePayment from "./feePayment.model.js";
 import Student from "../student/student.model.js";
 import XLSX from "xlsx";
 
@@ -13,6 +14,122 @@ const parsePaymentDate = (value) => {
 
   return date;
 };
+
+const toDateOnly = (value) => {
+  if (!value) return null;
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return null;
+  }
+
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+
+  return `${year}-${month}-${day}`;
+};
+
+const createReceipt = async (fee, values) => {
+  const cashAmount = Number(values.cashAmount) || 0;
+  const onlineAmount = Number(values.onlineAmount) || 0;
+
+  return FeePayment.create({
+    libraryId: fee.libraryId,
+    feeId: fee._id,
+    studentId: fee.studentId,
+    cashAmount,
+    onlineAmount,
+    paidAmount: cashAmount + onlineAmount,
+    totalAmount: Number(values.totalAmount ?? fee.totalAmount) || 0,
+    dueAmount: Math.max(Number(values.dueAmount) || 0, 0),
+    paymentDate: values.paymentDate || fee.paymentDate || new Date(),
+    transactionType: values.transactionType || fee.transactionType || "new_admission",
+    idempotencyKey: values.idempotencyKey || null,
+  });
+};
+
+// Existing database records have no receipt documents. Their current fee row
+// is their original receipt until a later due payment is recorded.
+const ensureOriginalReceipt = async (fee) => {
+  const existing = await FeePayment.findOne({ feeId: fee._id }).lean();
+  if (existing) {
+    if (!fee.hasPaymentReceipts) {
+      fee.hasPaymentReceipts = true;
+      await fee.save();
+    }
+    return;
+  }
+
+  await createReceipt(fee, {
+    cashAmount: fee.cashAmount,
+    onlineAmount: fee.onlineAmount,
+    totalAmount: fee.totalAmount,
+    dueAmount: fee.dueAmount,
+    paymentDate: fee.paymentDate,
+    transactionType: fee.transactionType || "new_admission",
+  });
+  fee.hasPaymentReceipts = true;
+  await fee.save();
+};
+
+const recalculateFeeBalance = async (fee) => {
+  const [totals] = await FeePayment.aggregate([
+    { $match: { feeId: fee._id } },
+    {
+      $group: {
+        _id: null,
+        cashAmount: { $sum: "$cashAmount" },
+        onlineAmount: { $sum: "$onlineAmount" },
+        paidAmount: { $sum: "$paidAmount" },
+      },
+    },
+  ]);
+
+  fee.cashAmount = Number(totals?.cashAmount) || 0;
+  fee.onlineAmount = Number(totals?.onlineAmount) || 0;
+  fee.paidAmount = Number(totals?.paidAmount) || 0;
+  fee.dueAmount = Math.max(Number(fee.totalAmount || 0) - fee.paidAmount, 0);
+  fee.paymentStatus = fee.dueAmount <= 0 ? "paid" : fee.paidAmount > 0 ? "partial" : "pending";
+  fee.hasPaymentReceipts = true;
+  await fee.save();
+
+  const receipts = await FeePayment.find({ feeId: fee._id }).sort({ paymentDate: 1, createdAt: 1 });
+  let runningPaid = 0;
+  for (const receipt of receipts) {
+    runningPaid += Number(receipt.paidAmount) || 0;
+    const dueAfterPayment = Math.max(Number(fee.totalAmount || 0) - runningPaid, 0);
+    if (receipt.dueAmount !== dueAfterPayment || receipt.totalAmount !== fee.totalAmount) {
+      receipt.totalAmount = fee.totalAmount;
+      receipt.dueAmount = dueAfterPayment;
+      await receipt.save();
+    }
+  }
+  return fee;
+};
+
+const formatReceipt = (payment, fee, student) => ({
+  ...payment,
+  _id: payment._id,
+  receiptId: payment._id,
+  feeId: fee._id,
+  recordType: "payment",
+  studentId: student || fee.studentId,
+  totalAmount: Number(payment.totalAmount) || 0,
+  cashAmount: Number(payment.cashAmount) || 0,
+  onlineAmount: Number(payment.onlineAmount) || 0,
+  paidAmount: Number(payment.paidAmount) || 0,
+  dueAmount: Number(payment.dueAmount) || 0,
+  currentDueAmount: Number(fee.dueAmount) || 0,
+  paymentDate: toDateOnly(payment.paymentDate),
+  startDate: toDateOnly(fee.startDate),
+  endDate: toDateOnly(fee.endDate),
+  renewalDate: toDateOnly(fee.renewalDate),
+  planType: fee.planType,
+  studyHours: fee.studyHours,
+  remark: payment.transactionType === "due_payment" ? "Remaining Payment" : payment.transactionType === "renewal" ? "Renewal" : "New Admission",
+});
 
 // ============================================================
 // ADD REVENUE / ADD FEES
@@ -152,6 +269,17 @@ export const addFees = async (req, res) => {
       startDate: finalStartDate,
       endDate: finalEndDate,
     });
+
+    await createReceipt(fees, {
+      cashAmount: finalCashAmount,
+      onlineAmount: finalOnlineAmount,
+      totalAmount,
+      dueAmount,
+      paymentDate: finalPaymentDate,
+      transactionType: "new_admission",
+    });
+    fees.hasPaymentReceipts = true;
+    await fees.save();
     console.log("SAVED FEES:", {
       totalAmount: fees.totalAmount,
       cashAmount: fees.cashAmount,
@@ -175,7 +303,6 @@ export const addFees = async (req, res) => {
   }
 };
 
-
 // ============================================================
 // GET STUDENT FEES
 // ============================================================
@@ -188,28 +315,30 @@ export const getStudentFees = async (req, res) => {
       studentId,
       libraryId,
     })
-      .sort({ paymentDate: -1 })
       .lean();
 
-    const formattedFees = fees.map((fee) => ({
-      ...fee,
+    const feeIds = fees.map((fee) => fee._id);
+    const payments = await FeePayment.find({ libraryId, studentId, feeId: { $in: feeIds } })
+      .sort({ paymentDate: -1 })
+      .lean();
+    const feeById = new Map(fees.map((fee) => [String(fee._id), fee]));
+    const receiptFeeIds = new Set(payments.map((payment) => String(payment.feeId)));
+    const legacy = fees.filter((fee) => !receiptFeeIds.has(String(fee._id)));
 
-      paymentDate: fee.paymentDate
-        ? new Date(fee.paymentDate).toISOString().split("T")[0]
-        : null,
-
-      startDate: fee.startDate
-        ? new Date(fee.startDate).toISOString().split("T")[0]
-        : null,
-
-      endDate: fee.endDate
-        ? new Date(fee.endDate).toISOString().split("T")[0]
-        : null,
-
-      renewalDate: fee.renewalDate
-        ? new Date(fee.renewalDate).toISOString().split("T")[0]
-        : null,
-    }));
+    const formattedFees = [
+      ...payments.map((payment) => formatReceipt(payment, feeById.get(String(payment.feeId)), null)),
+      ...legacy.map((fee) => ({
+        ...fee,
+        recordType: "legacy-fee",
+        feeId: fee._id,
+        currentDueAmount: Number(fee.dueAmount) || 0,
+        paymentDate: toDateOnly(fee.paymentDate),
+        startDate: toDateOnly(fee.startDate),
+        endDate: toDateOnly(fee.endDate),
+        renewalDate: toDateOnly(fee.renewalDate),
+        remark: fee.transactionType === "renewal" ? "Renewal" : "New Admission",
+      })),
+    ].sort((a, b) => new Date(b.paymentDate) - new Date(a.paymentDate));
 
     return res.status(200).json({
       success: true,
@@ -225,7 +354,6 @@ export const getStudentFees = async (req, res) => {
     });
   }
 };
-
 
 // ============================================================
 // GET FEES / PAYMENT HISTORY
@@ -260,41 +388,36 @@ export const getFees = async (req, res) => {
       };
     }
 
-    const fees = await Fees.find(filter)
+    const fees = await Fees.find({ libraryId })
       .populate("studentId", "name enrollmentNumber")
-      .sort({ paymentDate: -1 })
       .lean();
 
-    const formattedFees = fees.map((fee) => ({
-      ...fee,
-
-      paymentDate: fee.paymentDate
-        ? new Date(fee.paymentDate).toISOString().split("T")[0]
-        : null,
-
-      startDate: fee.startDate
-        ? new Date(fee.startDate).toISOString().split("T")[0]
-        : null,
-
-      endDate: fee.endDate
-        ? new Date(fee.endDate).toISOString().split("T")[0]
-        : null,
-
-      renewalDate: fee.renewalDate
-        ? new Date(fee.renewalDate).toISOString().split("T")[0]
-        : null,
-
-      // Backward compatibility for old records
-      cashAmount: Number(fee.cashAmount) || 0,
-      onlineAmount: Number(fee.onlineAmount) || 0,
-      paidAmount: Number(fee.paidAmount) || 0,
-      dueAmount: Number(fee.dueAmount) || 0,
-
-      remark:
-        fee.transactionType === "renewal"
-          ? "Renewal"
-          : "New Admission",
-    }));
+    const feeIds = fees.map((fee) => fee._id);
+    const paymentFilter = { libraryId, feeId: { $in: feeIds } };
+    if (month && year) {
+      paymentFilter.paymentDate = filter.paymentDate;
+    }
+    const payments = await FeePayment.find(paymentFilter).sort({ paymentDate: -1 }).lean();
+    const receiptFeeIds = new Set(payments.map((payment) => String(payment.feeId)));
+    const formattedFees = [
+      ...payments.map((payment) => {
+        const fee = fees.find((item) => String(item._id) === String(payment.feeId));
+        return formatReceipt(payment, fee, fee.studentId);
+      }),
+      ...fees
+        .filter((fee) => !fee.hasPaymentReceipts && (!filter.paymentDate || (fee.paymentDate >= filter.paymentDate.$gte && fee.paymentDate < filter.paymentDate.$lt)))
+        .map((fee) => ({
+          ...fee,
+          recordType: "legacy-fee",
+          feeId: fee._id,
+          currentDueAmount: Number(fee.dueAmount) || 0,
+          paymentDate: toDateOnly(fee.paymentDate),
+          startDate: toDateOnly(fee.startDate),
+          endDate: toDateOnly(fee.endDate),
+          renewalDate: toDateOnly(fee.renewalDate),
+          remark: fee.transactionType === "renewal" ? "Renewal" : "New Admission",
+        })),
+    ].sort((a, b) => new Date(b.paymentDate) - new Date(a.paymentDate));
 
     return res.status(200).json({
       success: true,
@@ -310,7 +433,6 @@ export const getFees = async (req, res) => {
     });
   }
 };
-
 
 // ============================================================
 // REVENUE STATS
@@ -356,34 +478,28 @@ export const getRevenueStats = async (req, res) => {
       };
     }
 
-    // --------------------------------------------------------
-    // GET FEES
-    // --------------------------------------------------------
+    // Receipt documents are the source of truth for money received. Legacy
+    // fee rows (created before receipts were introduced) are retained as-is.
+    const allFees = await Fees.find({ libraryId }).lean();
+    const feeIds = allFees.map((fee) => fee._id);
+    const receiptFilter = { libraryId, feeId: { $in: feeIds } };
+    if (filter.paymentDate) receiptFilter.paymentDate = filter.paymentDate;
+    const receipts = await FeePayment.find(receiptFilter).lean();
 
-    const fees = await Fees.find(filter).lean();
+    const legacyFees = allFees.filter((fee) =>
+      !fee.hasPaymentReceipts &&
+      (!filter.paymentDate || (fee.paymentDate >= filter.paymentDate.$gte && fee.paymentDate < filter.paymentDate.$lt))
+    );
 
-    // --------------------------------------------------------
-    // CALCULATE REVENUE
-    // --------------------------------------------------------
+    const totalCashRevenue = [...receipts, ...legacyFees]
+      .reduce((sum, item) => sum + (Number(item.cashAmount) || 0), 0);
+    const totalOnlineRevenue = [...receipts, ...legacyFees]
+      .reduce((sum, item) => sum + (Number(item.onlineAmount) || 0), 0);
 
-    let totalCashRevenue = 0;
-    let totalOnlineRevenue = 0;
-    let totalDueAmount = 0;
-
-    fees.forEach((fee) => {
-      const cash =
-        Number(fee.cashAmount) || 0;
-
-      const online =
-        Number(fee.onlineAmount) || 0;
-
-      const due =
-        Number(fee.dueAmount) || 0;
-
-      totalCashRevenue += cash;
-      totalOnlineRevenue += online;
-      totalDueAmount += due;
-    });
+    // Outstanding balance is a live balance, so it must not be double-counted
+    // per receipt or disappear merely because the payment happened next month.
+    const totalDueAmount = allFees
+      .reduce((sum, fee) => sum + (Number(fee.dueAmount) || 0), 0);
 
     // Actual received revenue
     const totalRevenue =
@@ -450,6 +566,13 @@ export const updateFees = async (req, res) => {
       return res.status(404).json({
         success: false,
         message: "Revenue record not found",
+      });
+    }
+
+    if (fees.hasPaymentReceipts) {
+      return res.status(400).json({
+        success: false,
+        message: "Edit the individual payment receipt instead of overwriting this membership record",
       });
     }
 
@@ -553,6 +676,183 @@ export const updateFees = async (req, res) => {
 };
 
 // ============================================================
+// RECORD / EDIT / DELETE INDIVIDUAL PAYMENT RECEIPTS
+// ============================================================
+export const addDuePayment = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { cashAmount = 0, onlineAmount = 0, paymentDate, idempotencyKey } = req.body;
+    const libraryId = req.user?.libraryId;
+    const fee = await Fees.findOne({ _id: id, libraryId });
+
+    if (!fee) {
+      return res.status(404).json({ success: false, message: "Revenue record not found" });
+    }
+
+    const cash = Number(cashAmount);
+    const online = Number(onlineAmount);
+    const paid = cash + online;
+    const finalPaymentDate = parsePaymentDate(paymentDate);
+    if (!Number.isFinite(cash) || !Number.isFinite(online) || cash < 0 || online < 0 || paid <= 0) {
+      return res.status(400).json({ success: false, message: "Enter a valid due payment amount" });
+    }
+    if (!finalPaymentDate) {
+      return res.status(400).json({ success: false, message: "Invalid payment date" });
+    }
+    if (idempotencyKey) {
+      const duplicate = await FeePayment.findOne({ libraryId, idempotencyKey });
+      if (duplicate) {
+        return res.status(409).json({ success: false, message: "This due payment was already recorded" });
+      }
+    }
+
+    // Converts an old fee row into an original receipt only when it first
+    // receives a later payment; no existing document is deleted.
+    await ensureOriginalReceipt(fee);
+    await recalculateFeeBalance(fee);
+    if (paid > Number(fee.dueAmount || 0)) {
+      return res.status(400).json({ success: false, message: "Due payment cannot exceed the outstanding amount" });
+    }
+
+    const receipt = await createReceipt(fee, {
+      cashAmount: cash,
+      onlineAmount: online,
+      totalAmount: fee.totalAmount,
+      dueAmount: Math.max(Number(fee.dueAmount) - paid, 0),
+      paymentDate: finalPaymentDate,
+      transactionType: "due_payment",
+      idempotencyKey,
+    });
+    await recalculateFeeBalance(fee);
+
+    return res.status(201).json({ success: true, message: "Due payment recorded successfully", data: receipt });
+  } catch (error) {
+    console.error("Add Due Payment Error:", error);
+    return res.status(500).json({ success: false, message: "Failed to record due payment", error: error.message });
+  }
+};
+
+export const updateFeePayment = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const libraryId = req.user?.libraryId;
+    const receipt = await FeePayment.findOne({ _id: id, libraryId });
+    if (!receipt) return res.status(404).json({ success: false, message: "Payment receipt not found" });
+
+    const fee = await Fees.findOne({ _id: receipt.feeId, libraryId });
+    if (!fee) return res.status(404).json({ success: false, message: "Revenue record not found" });
+
+    const cash = req.body.cashAmount === undefined ? receipt.cashAmount : Number(req.body.cashAmount);
+    const online = req.body.onlineAmount === undefined ? receipt.onlineAmount : Number(req.body.onlineAmount);
+    const paid = cash + online;
+    const otherPaid = await FeePayment.aggregate([
+      { $match: { feeId: fee._id, _id: { $ne: receipt._id } } },
+      { $group: { _id: null, paid: { $sum: "$paidAmount" } } },
+    ]);
+    if (!Number.isFinite(cash) || !Number.isFinite(online) || cash < 0 || online < 0 || paid + (Number(otherPaid[0]?.paid) || 0) > Number(fee.totalAmount || 0)) {
+      return res.status(400).json({ success: false, message: "Payment amount cannot exceed the membership fee" });
+    }
+    if (req.body.paymentDate !== undefined) {
+      const date = parsePaymentDate(req.body.paymentDate);
+      if (!date) return res.status(400).json({ success: false, message: "Invalid payment date" });
+      receipt.paymentDate = date;
+    }
+    receipt.cashAmount = cash;
+    receipt.onlineAmount = online;
+    receipt.paidAmount = paid;
+    await receipt.save();
+    await recalculateFeeBalance(fee);
+    return res.status(200).json({ success: true, message: "Payment receipt updated successfully", data: receipt });
+  } catch (error) {
+    console.error("Update Fee Payment Error:", error);
+    return res.status(500).json({ success: false, message: "Failed to update payment receipt", error: error.message });
+  }
+};
+
+export const deleteFeePayment = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const libraryId = req.user?.libraryId;
+
+    // 1. Find the payment receipt
+    const receipt = await FeePayment.findOne({
+      _id: id,
+      libraryId,
+    });
+
+    if (!receipt) {
+      return res.status(404).json({
+        success: false,
+        message: "Payment receipt not found",
+      });
+    }
+
+    // 2. Find the membership record linked to this receipt
+    const fee = await Fees.findOne({
+      _id: receipt.feeId,
+      libraryId,
+    });
+
+    if (!fee) {
+      // Delete only the selected receipt if its fee record
+      // no longer exists.
+      await FeePayment.findOneAndDelete({
+        _id: id,
+        libraryId,
+      });
+
+      return res.status(200).json({
+        success: true,
+        message: "Payment receipt deleted successfully",
+      });
+    }
+
+    // 3. If this is a renewal transaction, delete the renewal
+    // record and all receipts belonging to that renewal.
+    if (fee.transactionType === "renewal") {
+      await FeePayment.deleteMany({
+        feeId: fee._id,
+        libraryId,
+      });
+
+      await Fees.findOneAndDelete({
+        _id: fee._id,
+        libraryId,
+        transactionType: "renewal",
+      });
+
+      return res.status(200).json({
+        success: true,
+        message: "Renewal transaction deleted successfully",
+      });
+    }
+
+    // 4. For normal payments and due payments,
+    // preserve the existing deletion behaviour.
+    await FeePayment.findOneAndDelete({
+      _id: id,
+      libraryId,
+    });
+
+    // 5. Recalculate the remaining balance
+    await recalculateFeeBalance(fee);
+
+    return res.status(200).json({
+      success: true,
+      message: "Payment receipt deleted successfully",
+    });
+  } catch (error) {
+    console.error("Delete Fee Payment Error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Failed to delete payment receipt",
+      error: error.message,
+    });
+  }
+};
+
+// ============================================================
 // DELETE FEES
 // ============================================================
 export const deleteFees = async (req, res) => {
@@ -571,6 +871,8 @@ export const deleteFees = async (req, res) => {
         message: "Revenue record not found",
       });
     }
+
+    await FeePayment.deleteMany({ feeId: fees._id, libraryId });
 
     return res.status(200).json({
       success: true,
@@ -592,18 +894,14 @@ export const deleteFees = async (req, res) => {
 // ============================================================
 export const renewFees = async (req, res) => {
   try {
-    // ========================================================
-    // IMPORTANT:
-    // ID route params se aayegi
-    // PUT /fees/renew/:id
-    // ========================================================
-
     const { id } = req.params;
 
     const {
       duration,
       renewType = "continue",
       studyHours,
+      renewalDate,
+      nextRenewalDate,
       amount,
       cashAmount = 0,
       onlineAmount = 0,
@@ -612,61 +910,38 @@ export const renewFees = async (req, res) => {
 
     const libraryId = req.user?.libraryId;
 
-    // ========================================================
-    // VALIDATION
-    // ========================================================
-
-    if (!id) {
-      return res.status(400).json({
-        success: false,
-        message: "Fee record ID is required",
-      });
-    }
-
     if (!libraryId) {
-      return res.status(400).json({
+      return res.status(401).json({
         success: false,
-        message: "Library ID is required",
+        message: "Library access denied",
       });
     }
 
-    if (!duration) {
+    const isCustomDuration =
+      String(duration).toLowerCase() === "custom";
+
+    if (
+      !duration ||
+      (!isCustomDuration &&
+        ![1, 3, 6, 12].includes(Number(duration)))
+    ) {
       return res.status(400).json({
         success: false,
-        message: "Renewal duration is required",
+        message: "Invalid membership duration",
       });
     }
 
-    // ========================================================
-    // DURATION MAP
-    // ========================================================
-
-    const durationMap = {
-      1: "monthly",
-      3: "quarterly",
-      6: "halfYearly",
-      12: "yearly",
-    };
-
-    const planType =
-      durationMap[Number(duration)];
-
-    if (!planType) {
+    if (!["continue", "fresh"].includes(renewType)) {
       return res.status(400).json({
         success: false,
-        message: "Invalid renewal duration",
+        message: "Invalid renewal type",
       });
     }
 
-    // ========================================================
-    // FIND CURRENT FEE RECORD
-    // ========================================================
-
-    const currentFees =
-      await Fees.findOne({
-        _id: id,
-        libraryId,
-      });
+    const currentFees = await Fees.findOne({
+      _id: id,
+      libraryId,
+    });
 
     if (!currentFees) {
       return res.status(404).json({
@@ -675,15 +950,10 @@ export const renewFees = async (req, res) => {
       });
     }
 
-    // ========================================================
-    // FIND STUDENT
-    // ========================================================
-
-    const student =
-      await Student.findOne({
-        _id: currentFees.studentId,
-        libraryId,
-      });
+    const student = await Student.findOne({
+      _id: currentFees.studentId,
+      libraryId,
+    });
 
     if (!student) {
       return res.status(404).json({
@@ -692,229 +962,391 @@ export const renewFees = async (req, res) => {
       });
     }
 
-    // ========================================================
-    // UPDATE STUDY HOURS
-    // ========================================================
+    const durationMap = {
+      1: "monthly",
+      3: "quarterly",
+      6: "halfYearly",
+      12: "yearly",
+    };
 
-    if (
+    const planType = isCustomDuration
+      ? currentFees.planType || "monthly"
+      : durationMap[Number(duration)];
+
+    const finalStudyHours =
       studyHours !== undefined &&
-      studyHours !== null &&
-      studyHours !== ""
-    ) {
-      student.studyHours =
-        studyHours;
+        studyHours !== null &&
+        studyHours !== ""
+        ? String(studyHours)
+        : String(
+          currentFees.studyHours ??
+          student.studyHours ??
+          ""
+        );
 
-      await student.save();
-    }
-
-    // ========================================================
-    // PAYMENT DATE
-    // ========================================================
-
-    const finalPaymentDate =
-      parsePaymentDate(paymentDate);
-
-    if (!finalPaymentDate) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid payment date",
-      });
-    }
-
-    // ========================================================
-    // RENEWAL START DATE
-    // ========================================================
-
-    let renewalStartDate;
-
-    if (renewType === "continue") {
-      renewalStartDate =
-        currentFees.endDate
-          ? new Date(
-            currentFees.endDate
-          )
-          : new Date();
-    } else {
-      renewalStartDate =
-        new Date();
-    }
-
-    // ========================================================
-    // RENEWAL END DATE
-    // ========================================================
-
-    const renewalEndDate =
-      new Date(
-        renewalStartDate
-      );
-
-    renewalEndDate.setMonth(
-      renewalEndDate.getMonth() +
-      Number(duration)
+    const existingStudyHours = String(
+      currentFees.studyHours ??
+      student.studyHours ??
+      ""
     );
 
-    // ========================================================
-    // RENEWAL AMOUNT
-    // ========================================================
+    const studyHoursChanged =
+      finalStudyHours !== existingStudyHours;
 
-    const renewalAmount =
-      Number(amount) || 0;
+    const finalPaymentDate = parsePaymentDate(paymentDate);
 
-    if (renewalAmount < 0) {
-      return res.status(400).json({
-        success: false,
-        message:
-          "Renewal amount cannot be negative",
-      });
-    }
+    // Parse YYYY-MM-DD without timezone date shifting
+    const parseDateOnly = (dateValue) => {
+      if (!dateValue) return null;
 
-    // ========================================================
-    // PREVIOUS DUE
-    // ========================================================
-
-    const oldDueAmount =
-      Number(
-        currentFees.dueAmount
-      ) || 0;
-
-    // ========================================================
-    // TOTAL AMOUNT
-    //
-    // Renewal amount + previous due
-    // ========================================================
-
-    const totalAmount =
-      renewalAmount +
-      oldDueAmount;
-
-    // ========================================================
-    // CASH + ONLINE
-    // ========================================================
-
-    const finalCashAmount =
-      Number(cashAmount) || 0;
-
-    const finalOnlineAmount =
-      Number(onlineAmount) || 0;
-
-    const paidAmount =
-      finalCashAmount +
-      finalOnlineAmount;
-
-    // ========================================================
-    // PAYMENT VALIDATION
-    // ========================================================
-
-    if (paidAmount > totalAmount) {
-      return res.status(400).json({
-        success: false,
-        message:
-          "Cash Amount + Online Amount cannot be greater than Total Amount",
-      });
-    }
-
-    // ========================================================
-    // DUE
-    // ========================================================
-
-    const dueAmount =
-      Math.max(
-        totalAmount -
-        paidAmount,
-        0
+      const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(
+        String(dateValue)
       );
 
-    // ========================================================
-    // PAYMENT STATUS
-    // ========================================================
+      if (!match) return null;
+
+      const year = Number(match[1]);
+      const month = Number(match[2]);
+      const day = Number(match[3]);
+
+      const parsedDate = new Date(
+        Date.UTC(year, month - 1, day)
+      );
+
+      if (
+        parsedDate.getUTCFullYear() !== year ||
+        parsedDate.getUTCMonth() !== month - 1 ||
+        parsedDate.getUTCDate() !== day
+      ) {
+        return null;
+      }
+
+      return parsedDate;
+    };
+
+    // Determine membership start date
+    let renewalStartDate;
+
+    if (renewalDate) {
+      renewalStartDate = parseDateOnly(renewalDate);
+
+      if (!renewalStartDate) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid renewal date",
+        });
+      }
+    } else if (studyHoursChanged) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Renewal date is required when changing study hours",
+      });
+    } else if (renewType === "continue") {
+      renewalStartDate = currentFees.endDate
+        ? new Date(currentFees.endDate)
+        : new Date();
+    } else {
+      renewalStartDate = new Date();
+    }
+
+    if (
+      !renewalStartDate ||
+      Number.isNaN(renewalStartDate.getTime())
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid membership start date",
+      });
+    }
+
+    // Calculate membership end date
+    let renewalEndDate;
+
+    if (isCustomDuration) {
+      if (!renewalDate || !nextRenewalDate) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Renewal date and next renewal date are required for custom duration",
+        });
+      }
+
+      // Preserve the exact date selected in the frontend
+      renewalEndDate = parseDateOnly(nextRenewalDate);
+
+      if (!renewalEndDate) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid next renewal date",
+        });
+      }
+
+      if (
+        renewalEndDate.getTime() <=
+        renewalStartDate.getTime()
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Next renewal date must be after the renewal date",
+        });
+      }
+    } else {
+      // Existing duration calculation
+      renewalEndDate = new Date(renewalStartDate);
+
+      renewalEndDate.setMonth(
+        renewalEndDate.getMonth() + Number(duration)
+      );
+    }
+
+    // Validate new renewal amount
+    const renewalAmount = Number(amount);
+
+    if (
+      !Number.isFinite(renewalAmount) ||
+      renewalAmount < 0
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid renewal amount",
+      });
+    }
+
+    const finalCashAmount = Number(cashAmount);
+    const finalOnlineAmount = Number(onlineAmount);
+
+    if (
+      !Number.isFinite(finalCashAmount) ||
+      !Number.isFinite(finalOnlineAmount) ||
+      finalCashAmount < 0 ||
+      finalOnlineAmount < 0
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid payment amounts",
+      });
+    }
+
+    // --------------------------------------------------
+    // PREVIOUS DUE + NEW RENEWAL PAYMENT CALCULATION
+    // --------------------------------------------------
+
+    // Ensure existing fee has a receipt before changing its balance.
+    // These helpers must already exist in your controller.
+    await ensureOriginalReceipt(currentFees);
+    await recalculateFeeBalance(currentFees);
+
+    // Outstanding amount from the previous fee transaction
+    const previousDue = Math.max(
+      Number(currentFees.dueAmount) || 0,
+      0
+    );
+
+    // Total amount payable = previous due + new renewal amount
+    const totalPayable = previousDue + renewalAmount;
+
+    // Total cash and online payment collected from the student
+    const totalCollected =
+      finalCashAmount + finalOnlineAmount;
+
+    // Prevent overpayment
+    if (totalCollected > totalPayable) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Paid amount cannot exceed the total payable amount",
+      });
+    }
+
+    // Allocate payment to the previous due first.
+    // Cash is allocated first, followed by online payment.
+    const cashToPreviousDue = Math.min(
+      finalCashAmount,
+      previousDue
+    );
+
+    const remainingPreviousDueAfterCash = Math.max(
+      previousDue - cashToPreviousDue,
+      0
+    );
+
+    const onlineToPreviousDue = Math.min(
+      finalOnlineAmount,
+      remainingPreviousDueAfterCash
+    );
+
+    const previousDuePayment =
+      cashToPreviousDue + onlineToPreviousDue;
+
+    // Remaining payment belongs to the new renewal
+    const renewalCashAmount = Math.max(
+      finalCashAmount - cashToPreviousDue,
+      0
+    );
+
+    const renewalOnlineAmount = Math.max(
+      finalOnlineAmount - onlineToPreviousDue,
+      0
+    );
+
+    const renewalPaidAmount =
+      renewalCashAmount + renewalOnlineAmount;
+
+    // Calculate balances separately
+    const remainingPreviousDue = Math.max(
+      previousDue - previousDuePayment,
+      0
+    );
+
+    const renewalDueAmount = Math.max(
+      renewalAmount - renewalPaidAmount,
+      0
+    );
+
+    // --------------------------------------------------
+    // RECORD PAYMENT AGAINST THE ORIGINAL FEE
+    // --------------------------------------------------
+
+    // This payment is linked to the original fee transaction.
+    // It will reduce the previous fee's outstanding balance.
+    if (previousDuePayment > 0) {
+      await createReceipt(currentFees, {
+        cashAmount: cashToPreviousDue,
+        onlineAmount: onlineToPreviousDue,
+        totalAmount: Number(
+          currentFees.totalAmount
+        ) || 0,
+        dueAmount: remainingPreviousDue,
+        paymentDate: finalPaymentDate,
+        transactionType: "due_payment",
+      });
+
+      // Recalculate the original fee using its receipts.
+      await recalculateFeeBalance(currentFees);
+    }
+
+    // --------------------------------------------------
+    // NEW RENEWAL PAYMENT STATUS
+    // --------------------------------------------------
 
     let paymentStatus = "partial";
 
-    if (paidAmount >= totalAmount) {
+    if (renewalPaidAmount >= renewalAmount) {
       paymentStatus = "paid";
-    } else if (paidAmount <= 0) {
+    } else if (renewalPaidAmount <= 0) {
       paymentStatus = "pending";
     }
 
-    // ========================================================
-    // CREATE NEW RENEWAL RECORD
-    //
-    // IMPORTANT:
-    // Normal Renewal creates a new transaction.
-    // Existing old record remains unchanged.
-    // ========================================================
+    // --------------------------------------------------
+    // CREATE NEW RENEWAL TRANSACTION
+    // --------------------------------------------------
 
-    const renewedFees =
-      await Fees.create({
-        studentId:
-          currentFees.studentId,
+    const renewedFees = await Fees.create({
+      studentId: currentFees.studentId,
 
-        registrationFees: 0,
+      registrationFees: 0,
+      monthlyFees: renewalAmount,
 
-        monthlyFees:
-          renewalAmount,
+      // The new renewal contains only its own amount.
+      // Previous due is not added to this transaction.
+      totalAmount: renewalAmount,
 
-        totalAmount,
+      cashAmount: renewalCashAmount,
+      onlineAmount: renewalOnlineAmount,
+      paidAmount: renewalPaidAmount,
+      dueAmount: renewalDueAmount,
+      paymentStatus,
 
-        cashAmount:
-          finalCashAmount,
+      planType,
+      paymentDate: finalPaymentDate,
 
-        onlineAmount:
-          finalOnlineAmount,
+      transactionType: "renewal",
+      studyHours: finalStudyHours,
 
-        paidAmount,
+      libraryId,
+      renewedFromFeeId: currentFees._id,
 
-        dueAmount,
+      startDate: renewalStartDate,
+      endDate: renewalEndDate,
+      renewalDate: renewalEndDate,
+    });
 
-        paymentStatus,
+    console.log(
+      "Selected next renewal date:",
+      nextRenewalDate
+    );
 
-        planType,
+    console.log(
+      "Calculated end date ISO:",
+      renewalEndDate.toISOString()
+    );
 
-        paymentDate:
-          finalPaymentDate,
+    console.log(
+      "Saved end date ISO:",
+      renewedFees.endDate?.toISOString()
+    );
 
-        transactionType:
-          "renewal",
+    // --------------------------------------------------
+    // CREATE RECEIPT FOR THE NEW RENEWAL ONLY
+    // --------------------------------------------------
 
-        studyHours:
-          studyHours !== undefined
-            ? studyHours
-            : currentFees.studyHours,
+    await createReceipt(renewedFees, {
+      cashAmount: renewalCashAmount,
+      onlineAmount: renewalOnlineAmount,
+      totalAmount: renewalAmount,
+      dueAmount: renewalDueAmount,
+      paymentDate: finalPaymentDate,
+      transactionType: "renewal",
+    });
 
-        libraryId,
+    renewedFees.hasPaymentReceipts = true;
+    await renewedFees.save();
 
-        startDate:
-          renewalStartDate,
+    // --------------------------------------------------
+    // UPDATE STUDY HOURS
+    // --------------------------------------------------
 
-        endDate:
-          renewalEndDate,
+    if (finalStudyHours !== "") {
+      currentFees.studyHours = finalStudyHours;
+      await currentFees.save();
 
-        renewalDate:
-          renewalEndDate,
-      });
+      student.studyHours = finalStudyHours;
+      await student.save();
+    }
 
-    // ========================================================
+    // --------------------------------------------------
     // RESPONSE
-    // ========================================================
+    // --------------------------------------------------
 
     return res.status(201).json({
       success: true,
-      message:
-        "Membership renewed successfully",
+      message: "Membership renewed successfully",
 
-      data: renewedFees,
+      data: {
+        ...renewedFees.toObject(),
+
+        studyHours: finalStudyHours,
+        renewedFromFeeId: currentFees._id,
+
+        // Additional payment summary
+        previousDueAmount: previousDue,
+        previousDuePaidAmount: previousDuePayment,
+        remainingPreviousDue,
+        renewalAmount,
+        renewalPaidAmount,
+        renewalDueAmount,
+        totalPayable,
+        totalCollected,
+      },
     });
-
   } catch (error) {
-    console.error(
-      "Renew Fees Error:",
-      error
-    );
+    console.error("Renew fees error:", error);
 
     return res.status(500).json({
       success: false,
-      message:
-        "Failed to renew membership",
+      message: "Failed to renew membership",
       error: error.message,
     });
   }
@@ -956,6 +1388,13 @@ export const changeRenewal = async (req, res) => {
           "Only renewal transactions can be changed using Change Renewal",
       });
     }
+
+    const existingReceipts = fees.hasPaymentReceipts
+      ? await FeePayment.find({ feeId: fees._id }).sort({ paymentDate: 1, createdAt: 1 })
+      : [];
+    const originalReceipt = existingReceipts.find(
+      (receipt) => receipt.transactionType === "renewal"
+    );
 
     const durationMap = {
       1: "monthly",
@@ -1000,7 +1439,11 @@ export const changeRenewal = async (req, res) => {
     const totalAmount =
       renewalAmount;
 
-    if (paidAmount > totalAmount) {
+    const otherReceiptPaid = existingReceipts
+      .filter((receipt) => String(receipt._id) !== String(originalReceipt?._id))
+      .reduce((sum, receipt) => sum + (Number(receipt.paidAmount) || 0), 0);
+
+    if (paidAmount + otherReceiptPaid > totalAmount) {
       return res.status(400).json({
         success: false,
         message:
@@ -1047,13 +1490,20 @@ export const changeRenewal = async (req, res) => {
 
     fees.totalAmount = totalAmount;
 
-    fees.cashAmount = finalCashAmount;
+    const otherCash = existingReceipts
+      .filter((receipt) => String(receipt._id) !== String(originalReceipt?._id))
+      .reduce((sum, receipt) => sum + (Number(receipt.cashAmount) || 0), 0);
+    const otherOnline = existingReceipts
+      .filter((receipt) => String(receipt._id) !== String(originalReceipt?._id))
+      .reduce((sum, receipt) => sum + (Number(receipt.onlineAmount) || 0), 0);
 
-    fees.onlineAmount = finalOnlineAmount;
+    fees.cashAmount = finalCashAmount + otherCash;
 
-    fees.paidAmount = paidAmount;
+    fees.onlineAmount = finalOnlineAmount + otherOnline;
 
-    fees.dueAmount = dueAmount;
+    fees.paidAmount = paidAmount + otherReceiptPaid;
+
+    fees.dueAmount = Math.max(totalAmount - fees.paidAmount, 0);
 
     fees.paymentStatus = paymentStatus;
 
@@ -1066,6 +1516,15 @@ export const changeRenewal = async (req, res) => {
     fees.transactionType = "renewal";
 
     await fees.save();
+
+    if (originalReceipt) {
+      originalReceipt.cashAmount = finalCashAmount;
+      originalReceipt.onlineAmount = finalOnlineAmount;
+      originalReceipt.paidAmount = paidAmount;
+      originalReceipt.paymentDate = finalPaymentDate;
+      await originalReceipt.save();
+      await recalculateFeeBalance(fees);
+    }
 
     return res.status(200).json({
       success: true,
@@ -1089,13 +1548,9 @@ export const changeRenewal = async (req, res) => {
 export const getRenewalList = async (req, res) => {
   try {
     const libraryId = req.user?.libraryId;
-
     const { month, year } = req.query;
 
-    // ==========================================================
     // VALIDATION
-    // ==========================================================
-
     if (!libraryId) {
       return res.status(400).json({
         success: false,
@@ -1125,10 +1580,7 @@ export const getRenewalList = async (req, res) => {
       });
     }
 
-    // ==========================================================
     // SELECTED MONTH START / END
-    // ==========================================================
-
     const startDate = new Date(
       selectedYear,
       selectedMonth - 1,
@@ -1141,23 +1593,9 @@ export const getRenewalList = async (req, res) => {
       1
     );
 
-    // ==========================================================
-    // HELPER: DATE KEY
-    //
-    // This converts a date into:
-    // YYYY-MM-DD
-    //
-    // We use this to compare:
-    //
-    // Old membership endDate
-    // with
-    // New renewal startDate
-    // ==========================================================
-
+    // HELPER FUNCTIONS
     const getDateKey = (value) => {
-      if (!value) {
-        return null;
-      }
+      if (!value) return null;
 
       const date = new Date(value);
 
@@ -1165,139 +1603,80 @@ export const getRenewalList = async (req, res) => {
         return null;
       }
 
-      return date.toISOString().split("T")[0];
+      return [
+        date.getFullYear(),
+        String(date.getMonth() + 1).padStart(2, "0"),
+        String(date.getDate()).padStart(2, "0"),
+      ].join("-");
     };
 
-    // ==========================================================
-    // GET ALL FEE RECORDS
-    //
-    // IMPORTANT:
-    // We are NOT filtering by transactionType.
-    //
-    // New Admission records are required because their
-    // membership can expire in a future month.
-    //
-    // Renewal records are also required because they become
-    // the next membership and can expire in another month.
-    // ==========================================================
+    const getTime = (value) => {
+      if (!value) return 0;
 
+      const time = new Date(value).getTime();
+
+      return Number.isNaN(time) ? 0 : time;
+    };
+
+    // GET ALL FEE RECORDS
     const fees = await Fees.find({
       libraryId,
     })
+
       .populate(
         "studentId",
-        "name enrollmentNumber phone"
+        "name enrollmentNumber phone status"
       )
       .sort({
-        studentId: 1,
         endDate: 1,
-        paymentDate: 1,
         createdAt: 1,
       })
       .lean();
 
     // ==========================================================
     // BUILD RENEWAL MAP
-    //
-    // A renewal record is connected to the previous membership
-    // through:
-    //
-    // renewal.studentId === oldRecord.studentId
-    //
-    // AND
-    //
-    // renewal.startDate === oldRecord.endDate
-    //
-    // Example:
-    //
-    // Old:
-    // 16 Aug -> 16 Sep
-    //
-    // Renewal:
-    // 16 Sep -> 16 Oct
-    //
-    // Therefore old record is COMPLETED.
     // ==========================================================
 
     const renewalMap = new Map();
+    const renewalsByStudent = new Map();
 
     for (const fee of fees) {
-      if (
-        fee.transactionType !==
-        "renewal"
-      ) {
+      if (fee.transactionType !== "renewal") {
         continue;
       }
 
-      const studentId =
-        fee.studentId?._id?.toString();
+      const studentId = fee.studentId?._id?.toString();
 
       if (!studentId) {
         continue;
       }
 
-      const renewalStartDate =
-        getDateKey(
-          fee.startDate
-        );
+      const renewalStartDate = getDateKey(fee.startDate);
 
       if (!renewalStartDate) {
         continue;
       }
 
-      const mapKey =
-        `${studentId}_${renewalStartDate}`;
+      const mapKey = `${studentId}_${renewalStartDate}`;
 
-      /*
-       * If multiple renewal records somehow exist
-       * for the same student and same start date,
-       * keep the latest one.
-       */
-
-      const existing =
-        renewalMap.get(mapKey);
-
-      if (!existing) {
-        renewalMap.set(
-          mapKey,
-          fee
-        );
-        continue;
-      }
-
-      const existingCreatedAt =
-        existing.createdAt
-          ? new Date(
-            existing.createdAt
-          ).getTime()
-          : 0;
-
-      const currentCreatedAt =
-        fee.createdAt
-          ? new Date(
-            fee.createdAt
-          ).getTime()
-          : 0;
+      const existing = renewalMap.get(mapKey);
 
       if (
-        currentCreatedAt >
-        existingCreatedAt
+        !existing ||
+        getTime(fee.createdAt) > getTime(existing.createdAt)
       ) {
-        renewalMap.set(
-          mapKey,
-          fee
-        );
+        renewalMap.set(mapKey, fee);
       }
+
+      if (!renewalsByStudent.has(studentId)) {
+        renewalsByStudent.set(studentId, []);
+      }
+
+      renewalsByStudent.get(studentId).push(fee);
     }
 
     // ==========================================================
-    // FIND MEMBERSHIPS EXPIRING IN SELECTED MONTH
-    //
-    // IMPORTANT:
-    //
-    // Renewal List is based ONLY on endDate.
-    //
-    // Payment Date is NOT used here.
+    // FIND RENEWAL RECORDS
     // ==========================================================
 
     const renewalFees = [];
@@ -1307,341 +1686,338 @@ export const getRenewalList = async (req, res) => {
         continue;
       }
 
-      const membershipEndDate =
-        new Date(fee.endDate);
+      const membershipEndDate = new Date(fee.endDate);
 
-      if (
-        Number.isNaN(
-          membershipEndDate.getTime()
-        )
-      ) {
+      if (Number.isNaN(membershipEndDate.getTime())) {
         continue;
       }
 
-      // --------------------------------------------------------
-      // Only records whose membership expires in selected month
-      // --------------------------------------------------------
+      if (fee.studentId?.status === "inactive") {
+        continue;
+      }
 
-      if (
+      const studentId = fee.studentId?._id?.toString();
+
+      const endDateKey = getDateKey(fee.endDate);
+
+      const expiresInSelectedMonth =
         membershipEndDate >= startDate &&
-        membershipEndDate < endDate
-      ) {
-        renewalFees.push(fee);
+        membershipEndDate < endDate;
+
+      const exactRenewalKey =
+        studentId && endDateKey
+          ? `${studentId}_${endDateKey}`
+          : null;
+
+      // Find renewal linked to this exact original fee record
+      const linkedRenewals = fees
+        .filter(
+          (renewal) =>
+            renewal.transactionType === "renewal" &&
+            String(renewal.renewedFromFeeId || "") ===
+            String(fee._id)
+        )
+        .sort(
+          (a, b) =>
+            getTime(b.createdAt) - getTime(a.createdAt)
+        );
+
+      let completedRenewal =
+        linkedRenewals[0] ||
+        (exactRenewalKey
+          ? renewalMap.get(exactRenewalKey) || null
+          : null);
+      // SUPPORT EARLY RENEWALS
+      if (!completedRenewal && studentId) {
+        const studentRenewals =
+          renewalsByStudent.get(studentId) || [];
+
+        const eligibleRenewals = studentRenewals.filter(
+          (renewal) => {
+            if (!renewal.startDate) {
+              return false;
+            }
+
+            const renewalStart = new Date(renewal.startDate);
+
+            if (Number.isNaN(renewalStart.getTime())) {
+              return false;
+            }
+
+            if (renewalStart > membershipEndDate) {
+              return false;
+            }
+
+            if (
+              getTime(renewal.createdAt) <
+              getTime(fee.createdAt)
+            ) {
+              return false;
+            }
+
+            if (
+              renewal._id?.toString() === fee._id?.toString()
+            ) {
+              return false;
+            }
+
+            return true;
+          }
+        );
+
+        if (eligibleRenewals.length > 0) {
+          eligibleRenewals.sort(
+            (a, b) =>
+              getTime(b.createdAt) - getTime(a.createdAt)
+          );
+
+          completedRenewal = eligibleRenewals[0];
+        }
+      }
+
+      const previousPending =
+        membershipEndDate < startDate &&
+        !completedRenewal;
+
+      if (expiresInSelectedMonth || previousPending) {
+        renewalFees.push({
+          fee,
+          completedRenewal,
+        });
       }
     }
+
 
     // ==========================================================
     // FORMAT RESPONSE
     // ==========================================================
 
-    const formattedFees =
-      renewalFees.map((fee) => {
-        // ------------------------------------------------------
-        // STUDENT DETAILS
-        // ------------------------------------------------------
+    const formattedFees = renewalFees.map(
+      ({ fee, completedRenewal }) => {
+        const studentId = fee.studentId?._id?.toString();
 
-        const studentId =
-          fee.studentId?._id?.toString();
-
-        const name =
-          fee.studentId?.name || "-";
+        const name = fee.studentId?.name || "-";
 
         const enrollmentNumber =
           fee.studentId?.enrollmentNumber || "-";
 
-        const phone =
-          fee.studentId?.phone || "-";
+        const phone = fee.studentId?.phone || "-";
 
-        // ------------------------------------------------------
-        // CURRENT MEMBERSHIP END DATE
-        // ------------------------------------------------------
-
-        const currentEndDateKey =
-          getDateKey(
-            fee.endDate
-          );
-
-        // ------------------------------------------------------
-        // FIND NEXT RENEWAL FOR THIS MEMBERSHIP
-        //
-        // Example:
-        //
-        // Old record:
-        // endDate = 2026-09-16
-        //
-        // Renewal record:
-        // startDate = 2026-09-16
-        //
-        // => Renewal completed
-        // ------------------------------------------------------
-
-        const renewalMapKey =
-          studentId &&
-            currentEndDateKey
-            ? `${studentId}_${currentEndDateKey}`
+        const completedRenewalPayment =
+          completedRenewal?.paymentDate
+            ? new Date(completedRenewal.paymentDate)
             : null;
 
-        const completedRenewal =
-          renewalMapKey
-            ? renewalMap.get(
-              renewalMapKey
-            )
-            : null;
+        // A renewal record by itself is not proof of a completed renewal.
+        // If its payment receipt was deleted (or it still has a balance), the
+        // renewal must return to Pending in the renewal list.
+        const completedRenewalIsSettled = Boolean(
+          completedRenewal &&
+          Number(completedRenewal.dueAmount || 0) <= 0 &&
+          (!completedRenewal.paymentStatus ||
+            String(completedRenewal.paymentStatus).toLowerCase() === "paid")
+        );
 
-        // ------------------------------------------------------
-        // RENEWAL STATUS
-        // ------------------------------------------------------
+        const isRenewed = Boolean(
+          completedRenewalPayment &&
+          completedRenewalIsSettled &&
+          completedRenewalPayment >= startDate &&
+          completedRenewalPayment < endDate
+        );
 
-        const isRenewed =
-          Boolean(
-            completedRenewal
-          );
+        const status = isRenewed
+          ? "completed"
+          : "pending";
 
-        const status =
-          isRenewed
-            ? "completed"
-            : "pending";
+        // EXISTING TABLE PAYMENT DETAILS
+        const cashAmount = Number(fee.cashAmount) || 0;
 
-        // ------------------------------------------------------
-        // PAYMENT DETAILS OF CURRENT RECORD
-        // ------------------------------------------------------
-
-        const cashAmount =
-          Number(
-            fee.cashAmount
-          ) || 0;
-
-        const onlineAmount =
-          Number(
-            fee.onlineAmount
-          ) || 0;
+        const onlineAmount = Number(fee.onlineAmount) || 0;
 
         const paidAmount =
-          Number(
-            fee.paidAmount
-          ) ||
-          cashAmount +
-          onlineAmount;
+          Number(fee.paidAmount) ||
+          cashAmount + onlineAmount;
 
-        const dueAmount =
-          Number(
-            fee.dueAmount
-          ) || 0;
+        const dueAmount = Number(fee.dueAmount) || 0;
+        const previousDueAmount = dueAmount;
 
-        // ------------------------------------------------------
-        // DATES OF CURRENT MEMBERSHIP
-        // ------------------------------------------------------
+        let finalPaymentStatus = String(
+          fee.paymentStatus || ""
+        ).toLowerCase();
 
-        const paymentDate =
-          fee.paymentDate
-            ? new Date(
-              fee.paymentDate
-            )
-              .toISOString()
-              .split("T")[0]
-            : null;
+        if (!finalPaymentStatus) {
+          if (dueAmount <= 0) {
+            finalPaymentStatus = "paid";
+          } else if (paidAmount > 0) {
+            finalPaymentStatus = "partial";
+          } else {
+            finalPaymentStatus = "pending";
+          }
+        }
 
-        const renewalDate =
-          fee.renewalDate
-            ? new Date(
-              fee.renewalDate
-            )
-              .toISOString()
-              .split("T")[0]
-            : null;
+        // EXISTING DATES
+        const paymentDate = fee.paymentDate
+          ? getDateKey(fee.paymentDate)
+          : null;
 
-        const startDateFormatted =
-          fee.startDate
-            ? new Date(
-              fee.startDate
-            )
-              .toISOString()
-              .split("T")[0]
-            : null;
+        const renewalDate = fee.renewalDate
+          ? getDateKey(fee.renewalDate)
+          : null;
 
-        const endDateFormatted =
-          fee.endDate
-            ? new Date(
-              fee.endDate
-            )
-              .toISOString()
-              .split("T")[0]
-            : null;
+        const startDateFormatted = fee.startDate
+          ? getDateKey(fee.startDate)
+          : null;
 
-        // ------------------------------------------------------
-        // NEXT RENEWAL INFORMATION
-        //
-        // If current membership has already been renewed,
-        // use the new renewal record's endDate as the next
-        // renewal date.
-        // ------------------------------------------------------
+        const endDateFormatted = fee.endDate
+          ? getDateKey(fee.endDate)
+          : null;
 
         const completedRenewalPaymentDate =
           completedRenewal?.paymentDate
-            ? new Date(
-              completedRenewal.paymentDate
-            )
-              .toISOString()
-              .split("T")[0]
+            ? getDateKey(completedRenewal.paymentDate)
             : null;
+
+        const displayPaymentDate = isRenewed
+          ? completedRenewalPaymentDate
+          : paymentDate;
 
         const completedRenewalEndDate =
           completedRenewal?.endDate
-            ? new Date(
-              completedRenewal.endDate
-            )
-              .toISOString()
-              .split("T")[0]
+            ? getDateKey(completedRenewal.endDate)
             : null;
-
-        // ------------------------------------------------------
-        // RETURN OBJECT
-        // ------------------------------------------------------
 
         return {
           ...fee,
 
-          // ====================================================
-          // STUDENT
-          // ====================================================
-
+          // Student
           name,
-
           enrollmentNumber,
-
           phone,
 
-          // ====================================================
-          // PAYMENT
-          // ====================================================
-
+          // EXISTING TABLE PAYMENT FIELDS
           cashAmount,
-
           onlineAmount,
-
           paidAmount,
-
           dueAmount,
-
-          paymentStatus:
-            fee.paymentStatus ||
-            (
-              dueAmount <= 0
-                ? "paid"
-                : paidAmount > 0
-                  ? "partial"
-                  : "pending"
-            ),
-
-          // ====================================================
-          // RENEWAL STATUS
-          // ====================================================
-
+          paymentStatus: finalPaymentStatus,
+          previousDueAmount,
+          // Renewal status
           status,
-
           isRenewed,
 
-          // ====================================================
-          // CURRENT MEMBERSHIP DATES
-          // ====================================================
-
-          paymentDate,
-
+          // EXISTING TABLE DATES
+          paymentDate: displayPaymentDate,
           renewalDate,
+          startDate: startDateFormatted,
+          endDate: endDateFormatted,
 
-          startDate:
-            startDateFormatted,
+          lastRenewalDate: startDateFormatted,
+          renewDate: displayPaymentDate,
 
-          endDate:
-            endDateFormatted,
-
-          // ====================================================
-          // EXISTING FRONTEND COMPATIBILITY
-          // ====================================================
-
-          lastRenewalDate:
-            startDateFormatted,
-
-          renewDate:
-            paymentDate,
-
-          /*
-           * IMPORTANT:
-           *
-           * For the current renewal list row,
-           * this is the membership expiry date.
-           *
-           * If renewal has already happened,
-           * the next renewal date becomes the new
-           * renewal record's endDate.
-           */
-
-          nextRenewDate:
-            isRenewed
-              ? completedRenewalEndDate
-              : endDateFormatted,
-
-          // ====================================================
-          // COMPLETED RENEWAL INFO
-          // ====================================================
+          nextRenewDate: isRenewed
+            ? completedRenewalEndDate
+            : endDateFormatted,
 
           completedRenewalId:
-            completedRenewal?._id ||
-            null,
+            isRenewed ? completedRenewal?._id || null : null,
 
-          completedRenewalPaymentDate:
-            completedRenewalPaymentDate,
+          completedRenewalPaymentDate,
+          completedRenewalEndDate,
 
-          completedRenewalEndDate:
-            completedRenewalEndDate,
+          // LATEST RENEWAL DATA FOR EDIT / UPDATE FORMS
+          formRenewalId: completedRenewal?._id || fee._id,
 
-          // ====================================================
-          // TRANSACTION
-          // ====================================================
+          formStudyHours:
+            completedRenewal?.studyHours ??
+            fee.studyHours ??
+            "",
 
+          formAmount:
+            completedRenewal?.monthlyFees ??
+            completedRenewal?.amount ??
+            fee.monthlyFees ??
+            fee.amount ??
+            0,
+
+          formCashAmount:
+            completedRenewal?.cashAmount ??
+            fee.cashAmount ??
+            0,
+
+          formOnlineAmount:
+            completedRenewal?.onlineAmount ??
+            fee.onlineAmount ??
+            0,
+
+          formPaidAmount:
+            completedRenewal?.paidAmount ??
+            fee.paidAmount ??
+            0,
+
+          formDueAmount:
+            completedRenewal?.dueAmount ??
+            fee.dueAmount ??
+            0,
+
+          formPaymentDate:
+            completedRenewal?.paymentDate
+              ? getDateKey(completedRenewal.paymentDate)
+              : paymentDate,
+
+          formStartDate:
+            completedRenewal?.startDate
+              ? getDateKey(completedRenewal.startDate)
+              : startDateFormatted,
+
+          formEndDate:
+            completedRenewal?.endDate
+              ? getDateKey(completedRenewal.endDate)
+              : endDateFormatted,
+
+          formPlanType:
+            completedRenewal?.planType ??
+            fee.planType ??
+            "",
+
+          // Transaction
           transactionType:
-            fee.transactionType ||
-            "new_admission",
+            fee.transactionType || "new_admission",
 
           remark:
-            fee.transactionType ===
-              "renewal"
+            fee.transactionType === "renewal"
               ? "Renewal"
               : "New Admission",
 
-          // ====================================================
-          // ACTION
-          //
-          // Keep true so existing frontend still shows
-          // Update/Edit buttons.
-          //
-          // Later we can make Update disabled/hidden
-          // when isRenewed === true if required.
-          // ====================================================
-
+          // Action
           canRenew: true,
         };
-      });
+      }
+    );
 
-    // ==========================================================
+    // SORT BY MEMBERSHIP END DATE
+    formattedFees.sort((a, b) => {
+      const dateA = a.endDate
+        ? new Date(a.endDate).getTime()
+        : Infinity;
+
+      const dateB = b.endDate
+        ? new Date(b.endDate).getTime()
+        : Infinity;
+
+      return dateA - dateB;
+    });
+
     // RESPONSE
-    // ==========================================================
-
     return res.status(200).json({
       success: true,
       data: formattedFees,
     });
-
   } catch (error) {
-    console.error(
-      "Get Renewal List Error:",
-      error
-    );
+    console.error("Get Renewal List Error:", error);
 
     return res.status(500).json({
       success: false,
-      message:
-        "Failed to fetch renewal list",
+      message: "Failed to fetch renewal list",
       error: error.message,
     });
   }

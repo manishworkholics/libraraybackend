@@ -14,6 +14,12 @@ const feesSchema = new mongoose.Schema(
       required: true,
     },
 
+    renewedFromFeeId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Fees",
+      default: null,
+    },
+
     // REGISTRATION FEES
     registrationFees: {
       type: Number,
@@ -29,8 +35,6 @@ const feesSchema = new mongoose.Schema(
     },
 
     // PAID AMOUNT
-    // Always calculated as:
-    // cashAmount + onlineAmount
     paidAmount: {
       type: Number,
       default: 0,
@@ -59,7 +63,14 @@ const feesSchema = new mongoose.Schema(
       index: true,
     },
 
-    // Renewal / next membership end date
+    // PAYMENT RECEIPTS
+    hasPaymentReceipts: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
+
+    // RENEWAL DATE
     renewalDate: {
       type: Date,
       default: null,
@@ -145,7 +156,6 @@ const feesSchema = new mongoose.Schema(
   }
 );
 
-
 // ============================================================
 // AUTO CALCULATIONS
 // ============================================================
@@ -180,11 +190,22 @@ feesSchema.pre("save", function (next) {
     return next();
   }
 
-  // Custom Plan => Manual End Date
+  // CUSTOM PLAN:
+  // Preserve the manually selected end date.
   if (this.planType === "custom") {
     return next();
   }
 
+  // IMPORTANT:
+  // Renewal records already receive their endDate
+  // from the renewal controller.
+  // Do not overwrite that date in this middleware.
+  if (this.transactionType === "renewal") {
+    return next();
+  }
+
+  // Existing automatic date calculation for
+  // new admissions with standard plans.
   const start = new Date(this.startDate);
   const end = new Date(start);
 
@@ -213,7 +234,6 @@ feesSchema.pre("save", function (next) {
 
   next();
 });
-
 
 export default mongoose.models.Fees ||
   mongoose.model("Fees", feesSchema);

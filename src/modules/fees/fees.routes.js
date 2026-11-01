@@ -11,6 +11,9 @@ import {
   updateFees,
   changeRenewal,
   importFeesFromExcel,
+  addDuePayment,
+  updateFeePayment,
+  deleteFeePayment,
 } from "./fees.controller.js";
 
 import adminAuth from "../../middlewares/adminAuth.middleware.js";
@@ -79,6 +82,12 @@ router.put(
   adminAuth,
   changeRenewal
 );
+
+// Individual receipts keep later due collections separate from the original
+// admission/renewal transaction.
+router.post("/:id/due-payment", adminAuth, addDuePayment);
+router.put("/payment/:id", adminAuth, updateFeePayment);
+router.delete("/payment/:id", adminAuth, deleteFeePayment);
 
 /* =========================================
    👨‍🎓 STUDENT PAYMENT HISTORY
